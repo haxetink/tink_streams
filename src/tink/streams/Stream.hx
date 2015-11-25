@@ -8,10 +8,10 @@ using tink.CoreApi;
 @:forward
 abstract Stream<T>(StreamObject<T>) from StreamObject<T> to StreamObject<T> {
   @:from static public function generate<T>(step:Void->Future<StreamStep<T>>):Stream<T>
-    return new Generator2(step);
+    return new Generator(step);
 }
 
-private class Generator2<T> extends StreamBase<T> {
+class Generator<T> extends StreamBase<T> {
   var step:Void->Future<StreamStep<T>>;
   var waiting:Array<FutureTrigger<StreamStep<T>>>;
   public function new(step) {
@@ -20,12 +20,12 @@ private class Generator2<T> extends StreamBase<T> {
   }
   override public function next():Future<StreamStep<T>> {
     var ret = Future.trigger();
-    waiting.push(ret);
-    if (waiting.length == 1)
+    
+    if (waiting.push(ret) == 1)
       step().handle(ret.trigger);
-    else {
+    else
       waiting[waiting.length - 2].asFuture().handle(function () step().handle(ret.trigger));
-    }
+      
     return ret;
   }
 }
@@ -92,13 +92,13 @@ class StreamBase<T> implements StreamObject<T> {
     return mapAsync(lift(item));
   
   public function mapAsync<R>(item:T->Future<R>):Stream<R>
-    return new MapStream(this, item);
+    return new MapAsyncStream(this, item);
   
   public function filter(item:T->Bool):Stream<T>
     return filterAsync(lift(item));
   
   public function filterAsync(item:T->Future<Bool>):Stream<T>
-    return new FilterStream(this, item);
+    return new FilterAsyncStream(this, item);
   
   public function fold<R>(start:R, reduce:T->R->R):Surprise<R, Error>
     return foldAsync(start, function (cur, ret) return Future.sync(reduce(cur, ret)));
@@ -133,7 +133,7 @@ class IteratorStream<T> extends StreamBase<T> {
     );
 }
 
-class MapStream<T, R> extends StreamBase<R> {
+class MapAsyncStream<T, R> extends StreamBase<R> {
   var mapper:T->Future<R>;
   var data:Stream<T>;
   
@@ -156,7 +156,7 @@ class MapStream<T, R> extends StreamBase<R> {
   
 }
 
-class FilterStream<T> extends StreamBase<T> {
+class FilterAsyncStream<T> extends StreamBase<T> {
   var matches:T->Future<Bool>;
   var data:Stream<T>;
   

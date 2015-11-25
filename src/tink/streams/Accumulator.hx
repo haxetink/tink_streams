@@ -4,7 +4,7 @@ import tink.streams.Stream;
 
 using tink.CoreApi;
 
-class Generator<T> extends StreamBase<T> {
+class Accumulator<T> extends StreamBase<T> {
   
   //TODO: consider using this as a basis for stream normalization, i.e. make sure that separate next calls are handled individually
   

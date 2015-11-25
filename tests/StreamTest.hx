@@ -1,7 +1,7 @@
 package;
 
 import haxe.unit.TestCase;
-import tink.streams.Generator;
+import tink.streams.Accumulator;
 import tink.streams.Stream;
 
 using tink.CoreApi;
@@ -48,8 +48,8 @@ class StreamTest extends TestCase {
     assertEquals('1,2,3,4,5,6,7,8,9,10', out.join(','));
   }
   
-  function testGenerator() {
-    var g = new Generator();
+  function testAccumulator() {
+    var g = new Accumulator();
     var out = [];
         
     g.forEach(function (x:Int) { 
@@ -93,14 +93,14 @@ class StreamTest extends TestCase {
     });
   }
   
-  function testGenerator2() {
+  function testGenerator() {
     
     function squares()
       return new IteratorStream([for (i in 0...100) i].iterator()).filter(function (i) return Math.floor(Math.sqrt(i)) == Math.sqrt(i));
       
     var g = Stream.generate(squares().next);
     g.fold([], function (x, y) return y.concat([x])).handle(function (x) {
-      trace(x.sure());
+      assertEquals('0,1,4,9,16,25,36,49,64,81', x.sure().join(','));
     });
   }
 }
