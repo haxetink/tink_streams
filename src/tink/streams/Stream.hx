@@ -141,16 +141,16 @@ class StreamBase<T> implements StreamObject<T> {
   }
   
   public function map<R>(item:T->R):Stream<R>
-    return new Map(this, item);
+    return new StreamMap(this, item);
   
   public function mapAsync<R>(item:T->Future<R>):Stream<R>
-    return new MapAsync(this, item);
+    return new StreamMapAsync(this, item);
   
   public function filter(item:T->Bool):Stream<T>
-    return new Filter(this, item);
+    return new StreamFilter(this, item);
   
   public function filterAsync(item:T->Future<Bool>):Stream<T>
-    return new FilterAsync(this, item);
+    return new StreamFilterAsync(this, item);
   
 }
 
@@ -176,7 +176,7 @@ class IteratorStream<T> extends StreamBase<T> {
   }
 }
 
-private class FilterAsync<T> extends MapFilterAsync<T, T> {
+class StreamFilterAsync<T> extends StreamMapFilterAsync<T, T> {
   public function new(data, filter:T->Future<Bool>)
     super(data, lift(filter)); 
     
@@ -184,7 +184,7 @@ private class FilterAsync<T> extends MapFilterAsync<T, T> {
     return function (x) return filter(x).map(function (matches) return if (matches) Some(x) else None);
 }
 
-private class MapAsync<In, Out> extends MapFilterAsync<In, Out> {
+class StreamMapAsync<In, Out> extends StreamMapFilterAsync<In, Out> {
   public function new(data, map:In->Future<Out>)
     super(data, lift(map));
     
@@ -192,7 +192,9 @@ private class MapAsync<In, Out> extends MapFilterAsync<In, Out> {
     return function (x) return map(x).map(Some);
 }
 
-private class MapFilterAsync<In, Out> extends StreamBase<Out> {
+//TODO: consider using a faster alternative to option
+
+class StreamMapFilterAsync<In, Out> extends StreamBase<Out> {
   var transformer:In->Future<Option<Out>>;
   var data:Stream<In>;
   
@@ -202,7 +204,7 @@ private class MapFilterAsync<In, Out> extends StreamBase<Out> {
   }
   
   function chain<R>(transformer:Out->Option<R>):Stream<R> 
-    return new MapFilterAsync<In, R>(
+    return new StreamMapFilterAsync<In, R>(
       data, 
       function (i:In):Future<Option<R>>
         return this.transformer(i).map(function (o) return switch o {
@@ -212,7 +214,7 @@ private class MapFilterAsync<In, Out> extends StreamBase<Out> {
     );
   
   function chainAsync<R>(transformer:Out->Future<Option<R>>):Stream<R>
-    return new MapFilterAsync<In, R>(
+    return new StreamMapFilterAsync<In, R>(
       data, 
       function (i:In):Future<Option<R>>
         return this.transformer(i).flatMap(function (o) return switch o {
@@ -222,16 +224,16 @@ private class MapFilterAsync<In, Out> extends StreamBase<Out> {
     );
   
   override public function filterAsync(item:Out->Future<Bool>):Stream<Out>
-    return chainAsync(FilterAsync.lift(item));
+    return chainAsync(StreamFilterAsync.lift(item));
     
   override public function mapAsync<R>(item:Out->Future<R>):Stream<R>
-    return chainAsync(MapAsync.lift(item));
+    return chainAsync(StreamMapAsync.lift(item));
     
   override public function map<R>(item:Out->R):Stream<R>
-    return chain(Map.lift(item));
+    return chain(StreamMap.lift(item));
     
   override public function filter(item:Out->Bool):Stream<Out>
-    return chain(Filter.lift(item));    
+    return chain(StreamFilter.lift(item));    
   
   override public function next():Future<StreamStep<Out>>
     return 
@@ -249,7 +251,7 @@ private class MapFilterAsync<In, Out> extends StreamBase<Out> {
  
 }
 
-private class Filter<T> extends MapFilter<T, T> {
+class StreamFilter<T> extends StreamMapFilter<T, T> {
   public function new(data, filter:T->Bool)
     super(data, lift(filter)); 
     
@@ -257,7 +259,7 @@ private class Filter<T> extends MapFilter<T, T> {
     return function (x) return if (filter(x)) Some(x) else None;
 }
 
-private class Map<In, Out> extends MapFilter<In, Out> {
+class StreamMap<In, Out> extends StreamMapFilter<In, Out> {
   public function new(data, map:In->Out)
     super(data, lift(map));
     
@@ -265,7 +267,7 @@ private class Map<In, Out> extends MapFilter<In, Out> {
     return function (x) return Some(map(x));
 }
 
-private class MapFilter<In, Out> extends StreamBase<Out> {
+class StreamMapFilter<In, Out> extends StreamBase<Out> {
   var transformer:In->Option<Out>;
   var data:Stream<In>;
   
@@ -275,7 +277,7 @@ private class MapFilter<In, Out> extends StreamBase<Out> {
   }
   
   function chain<R>(transformer:Out->Option<R>):Stream<R> 
-    return new MapFilter<In, R>(
+    return new StreamMapFilter<In, R>(
       data, 
       function (i:In):Option<R>
         return switch this.transformer(i) {
@@ -285,7 +287,7 @@ private class MapFilter<In, Out> extends StreamBase<Out> {
     );
   
   function chainAsync<R>(transformer:Out->Future<Option<R>>):Stream<R>
-    return new MapFilterAsync<In, R>(
+    return new StreamMapFilterAsync<In, R>(
       data, 
       function (i:In):Future<Option<R>>
         return switch this.transformer(i) {
@@ -295,16 +297,16 @@ private class MapFilter<In, Out> extends StreamBase<Out> {
     );
   
   override public function filterAsync(item:Out->Future<Bool>):Stream<Out>
-    return chainAsync(FilterAsync.lift(item));
+    return chainAsync(StreamFilterAsync.lift(item));
     
   override public function mapAsync<R>(item:Out->Future<R>):Stream<R>
-    return chainAsync(MapAsync.lift(item));
+    return chainAsync(StreamMapAsync.lift(item));
     
   override public function map<R>(item:Out->R):Stream<R>
-    return chain(Map.lift(item));
+    return chain(StreamMap.lift(item));
     
   override public function filter(item:Out->Bool):Stream<Out>
-    return chain(Filter.lift(item));
+    return chain(StreamFilter.lift(item));
   
   override public function next():Future<StreamStep<Out>>
     return 
