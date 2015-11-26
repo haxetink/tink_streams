@@ -7,6 +7,8 @@ using tink.CoreApi;
 
 @:forward
 abstract Streamable<T>(StreamableObject<T>) from StreamableObject<T> to StreamableObject<T> {
+  @:from static public function repeat<A>(stream:Stream<A>):Streamable<A>
+    return new StreamRepeatable(stream);
 }
 
 interface StreamableObject<T> {
@@ -15,6 +17,50 @@ interface StreamableObject<T> {
   function mapAsync<R>(transform:T->Future<R>):Streamable<R>;
   function filter(test:T->Bool):Streamable<T>;
   function filterAsync(test:T->Future<Bool>):Streamable<T>;
+  function cache():Streamable<T>;
+}
+
+class StreamRepeatable<T> extends StreamableBase<T> {
+  var buffer:Array<T>;
+  var error:Null<Error>;
+  var source:Stream<T>;
+  
+  public function new(source:Stream<T>) {
+    super();
+    this.buffer = [];
+    this.source = new CopyStream(source, function (step) switch step {
+      case Data(d): buffer.push(d);
+      case End: source = null;
+      case Fail(e): source = null; error = e;
+    });
+  }
+  
+  override public function cache():Streamable<T>
+    return this;
+    
+  override public function stream():Stream<T>
+    return
+      if (source != null) new CompoundStream([buffer.iterator(), source]);
+      else new IteratorStream(buffer.iterator(), error);
+  
+}
+
+private class CopyStream<T> extends StreamBase<T> {
+  
+  var source:Stream<T>;
+  var cb:StreamStep<T>->Void;
+  
+  public function new(source, cb) {
+    this.source = source;
+    this.cb = cb;
+  }
+  
+  override public function next() {
+    var ret = source.next();
+    ret.handle(cb);
+    return ret;
+  }
+  
 }
 
 class IterableStreamable<T> extends StreamableBase<T> {
@@ -31,6 +77,9 @@ class IterableStreamable<T> extends StreamableBase<T> {
 class StreamableBase<T> implements StreamableObject<T> {
   
   public function new() { } 
+  
+  public function cache():Streamable<T>
+    return new StreamRepeatable(stream());
   
   public function stream():Stream<T>
     return new IteratorStream([].iterator());

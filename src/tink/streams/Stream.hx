@@ -40,6 +40,40 @@ abstract Stream<T>(StreamObject<T>) from StreamObject<T> to StreamObject<T> {
     });  
 }
 
+class CompoundStream<T> extends StreamBase<T> {
+  var parts:Array<Stream<T>>;
+  public function new(parts)
+    this.parts = parts;
+    
+  override public function next():Future<StreamStep<T>>
+    return 
+      switch parts {
+        case []: Future.sync(End);
+        default:
+          parts[0].next().flatMap(function (step) return switch step {
+            case Data(_) | Fail(_): Future.sync(step);
+            case End: 
+              parts.shift();
+              next();
+          });
+      }
+      
+  function transform<X>(f:Stream<T>->Stream<X>):Stream<X>
+    return new CompoundStream(parts.map(f));
+      
+  override public function map<R>(item:T->R):Stream<R>
+    return transform(function (s) return s.map(item));
+    
+  override public function mapAsync<R>(item:T->Future<R>):Stream<R>
+    return transform(function (s) return s.mapAsync(item));
+    
+  override public function filter(item:T->Bool):Stream<T>
+    return transform(function (s) return s.filter(item));
+    
+  override public function filterAsync(item:T->Future<Bool>):Stream<T>
+    return transform(function (s) return s.filterAsync(item));
+}
+
 class Generator<T> extends StreamBase<T> {
   var step:Void->Future<StreamStep<T>>;
   var waiting:Array<FutureTrigger<StreamStep<T>>>;
@@ -156,16 +190,20 @@ class StreamBase<T> implements StreamObject<T> {
 
 class IteratorStream<T> extends StreamBase<T> {
   var target:Iterator<T>;
+  var error:Null<Error>;
   
-  public function new(target)
+  public function new(target, ?error) {
     this.target = target;
+    this.error = error;
+  }
     
   override public function next()
     return Future.sync(
       if (target.hasNext()) 
         Data(target.next()) 
       else 
-        End
+        if (error == null) End
+        else Fail(error)
     );
     
   override public inline function forEach(item:T->Bool):Surprise<Noise, Error> {
