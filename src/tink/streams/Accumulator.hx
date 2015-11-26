@@ -6,8 +6,6 @@ using tink.CoreApi;
 
 class Accumulator<T> extends StreamBase<T> {
   
-  //TODO: consider using this as a basis for stream normalization, i.e. make sure that separate next calls are handled individually
-  
   var end:StreamStep<T>;
   var buffered:Array<StreamStep<T>>;
   var waiting:Array<FutureTrigger<StreamStep<T>>>;

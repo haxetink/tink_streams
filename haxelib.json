@@ -1,0 +1,21 @@
+{
+	"name": "tink_streams",
+	"license": "MIT",
+	"tags": [
+		"tink",
+		"cross",
+		"stream",
+		"async"
+	],
+	"classPath": "src",
+	"description": "Streams from the future. With lasers, of course ... whoaaaaa!!!!",
+	"contributors": [
+		"back2dos"
+	],
+	"releasenote": "First haxelib release.",
+	"version": "0.0.0",
+	"url": "http://haxetink.org/tink_streams",
+	"dependencies": {
+		"tink_core": ""
+	}
+}
