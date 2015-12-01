@@ -10,7 +10,8 @@ class RunTests {
     var t = new TestRunner();
     t.add(new StreamTest());
     t.add(new StreamableTest());
+    t.add(new ExtTest());
     t.run();
   }
-  
+
 }

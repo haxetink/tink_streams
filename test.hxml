@@ -1,0 +1,6 @@
+-main RunTests
+-cp tests
+-cp src
+-lib tink_core
+-neko test.n
+-cmd neko test.n
