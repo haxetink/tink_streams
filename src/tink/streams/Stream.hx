@@ -80,7 +80,7 @@ class Generator<T> extends StreamBase<T> {
   
   public function new(step) {
     this.step = step;
-    this.waiting = [];
+    this.waiting = new Array<FutureTrigger<StreamStep<T>>>();
   }
   
   override public function next():Future<StreamStep<T>> {
@@ -113,10 +113,7 @@ interface StreamObject<T> {
 class StreamBase<T> implements StreamObject<T> {
   public function next():Future<StreamStep<T>>
     return Future.sync(End);
-  
-  static function lift<A, B>(f:A->B):A->Future<B>
-    return function (a) return Future.sync(f(a));
-  
+    
   public function forEach(item:T->Bool):Surprise<Noise, Error> 
     return Future.async(function (cb) {
       function next() {
