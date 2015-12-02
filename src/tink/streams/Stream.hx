@@ -1,8 +1,8 @@
 package tink.streams;
 
-import haxe.ds.Option;
+//import haxe.ds.Option;
 import tink.streams.StreamStep;
-
+//import tink.streams.Stream.Maybe.*;
 using tink.CoreApi;
 
 @:forward
@@ -77,6 +77,30 @@ class Generator<T> extends StepWise<T> {
   }
 }
 
+private abstract Maybe<T>(Null<T>) {
+  inline function new(o) this = o;
+  
+  @:to public inline function isSet():Bool
+    return this != null;
+  
+  public inline function get():T
+    return this;
+    
+  public inline function map<R>(f:T->R):Maybe<R>
+    return 
+      if (isSet()) Maybe.Some(f(this));
+      else Maybe.None();
+    
+  public inline function flatMap<R>(f:T->Maybe<R>):Maybe<R>
+    return
+      if (isSet()) f(this);
+      else Maybe.None();
+  
+  static public inline function Some<T>(v:T):Maybe<T> return new Maybe(v);
+  static public inline function None<T>():Maybe<T> return null;
+}
+
+
 class ConcatStream<T> extends StreamBase<T> {
   var parts:Array<Stream<T>>;
 
@@ -89,10 +113,10 @@ class ConcatStream<T> extends StreamBase<T> {
   override public function filterAsync(item:T->Future<Bool>):Stream<T> 
     return transform(function (x) return x.filterAsync(item));
     
-  override public function map<Out>(item:T->Out):Stream<Out> 
+  override public function map<R>(item:T->R):Stream<R> 
     return transform(function (x) return x.map(item));
     
-  override public function mapAsync<Out>(item:T->Future<Out>):Stream<Out> 
+  override public function mapAsync<R>(item:T->Future<R>):Stream<R> 
     return transform(function (x) return x.mapAsync(item));
     
   function transform<Out>(t:Stream<T>->Stream<Out>):Stream<Out>
@@ -255,24 +279,24 @@ class StreamBase<T> implements StreamObject<T> {
 }
 
 
-class StreamFilter<T> extends StreamMapFilter<T, T> {
-  public function new(data, filter:T->Bool)
-    super(data, lift(filter)); 
+abstract StreamFilter<T>(StreamMapFilter<T, T>) to Stream<T> {
+  public inline function new(data, filter:T->Bool)
+    this = new StreamMapFilter(data, lift(filter)); 
     
-  static public function lift<T>(filter:T->Bool)
-    return function (x) return if (filter(x)) Some(x) else None;
+  static public function lift<T>(filter:T->Bool):T->Maybe<T>
+    return function (x) return if (filter(x)) Maybe.Some(x) else Maybe.None();
 }
 
-class StreamMap<In, Out> extends StreamMapFilter<In, Out> {
-  public function new(data, map:In->Out)
-    super(data, lift(map));
+abstract StreamMap<In, Out>(StreamMapFilter<In, Out>) to Stream<Out> {
+  public inline function new(data, map:In->Out)
+    this = new StreamMapFilter(data, lift(map));
     
   static public function lift<In, Out>(map:In->Out)
-    return function (x) return Some(map(x));
+    return function (x) return Maybe.Some(map(x));
 }
 
 class StreamMapFilter<In, Out> extends StreamBase<Out> {
-  var transformer:In->Option<Out>;
+  var transformer:In->Maybe<Out>;
   var data:Stream<In>;
   
   public function new(data, transformer) {
@@ -280,39 +304,36 @@ class StreamMapFilter<In, Out> extends StreamBase<Out> {
     this.transformer = transformer;
   }
   
-  function chain<R>(transformer:Out->Option<R>):Stream<R> 
+  function chain<R>(transformer:Out->Maybe<R>):Stream<R> 
     return new StreamMapFilter<In, R>(
       data, 
-      function (i:In):Option<R>
-        return switch this.transformer(i) {
-          case Some(o): transformer(o);
-          case None: None;
-        }
+      function (i:In):Maybe<R>
+        return this.transformer(i).flatMap(transformer)
     );
     
   override public function forEach(item:Out->Bool):Surprise<Bool, Error>
     return data.forEach(function (x) {
       return switch transformer(x) {
-        case Some(v): item(v);
-        case None: true;
+        case v if (v.isSet()): item(v.get());
+        default: true;
       }
     });
   
   override public function forEachAsync(item:Out->Future<Bool>):Surprise<Bool, Error> 
     return data.forEachAsync(function (x) {
       return switch transformer(x) {
-        case Some(v): item(v);
-        case None: Future.sync(true);
+        case v if (v.isSet()): item(v.get());
+        default: Future.sync(true);
       }
     });
   
-  function chainAsync<R>(transformer:Out->Future<Option<R>>):Stream<R>
+  function chainAsync<R>(transformer:Out->Future<Maybe<R>>):Stream<R>
     return new StreamMapFilterAsync<In, R>(
       data, 
-      function (i:In):Future<Option<R>>
+      function (i:In):Future<Maybe<R>>
         return switch this.transformer(i) {
-          case Some(o): transformer(o);
-          case None: Future.sync(None);
+          case v if (v.isSet()): transformer(v.get());
+          default: Future.sync(Maybe.None());
         }
     );
   
@@ -329,26 +350,24 @@ class StreamMapFilter<In, Out> extends StreamBase<Out> {
     return chain(StreamFilter.lift(item));
 }
 
-class StreamFilterAsync<T> extends StreamMapFilterAsync<T, T> {
-  public function new(data, filter:T->Future<Bool>)
-    super(data, lift(filter)); 
+abstract StreamFilterAsync<T>(StreamMapFilterAsync<T, T>) to Stream<T> {
+  public inline function new(data, filter:T->Future<Bool>)
+    this = new StreamMapFilterAsync(data, lift(filter)); 
     
   static public function lift<T>(filter:T->Future<Bool>)
-    return function (x) return filter(x).map(function (matches) return if (matches) Some(x) else None);
+    return function (x) return filter(x).map(function (matches) return if (matches) Maybe.Some(x) else Maybe.None());
 }
 
-class StreamMapAsync<In, Out> extends StreamMapFilterAsync<In, Out> {
-  public function new(data, map:In->Future<Out>)
-    super(data, lift(map));
+abstract StreamMapAsync<In, Out>(StreamMapFilterAsync<In, Out>) to Stream<Out> {
+  public inline function new(data, map:In->Future<Out>)
+    this = new StreamMapFilterAsync(data, lift(map));
     
   static public function lift<In, Out>(map:In->Future<Out>)
-    return function (x) return map(x).map(Some);
+    return function (x) return map(x).map(Maybe.Some);
 }
 
-//TODO: consider using a faster alternative to option
-
 class StreamMapFilterAsync<In, Out> extends StreamBase<Out> {
-  var transformer:In->Future<Option<Out>>;
+  var transformer:In->Future<Maybe<Out>>;
   var data:Stream<In>;
   
   public function new(data, transformer) {
@@ -356,31 +375,28 @@ class StreamMapFilterAsync<In, Out> extends StreamBase<Out> {
     this.transformer = transformer;
   }
   
-  function chain<R>(transformer:Out->Option<R>):Stream<R> 
+  function chain<R>(transformer:Out->Maybe<R>):Stream<R> 
     return new StreamMapFilterAsync<In, R>(
       data, 
-      function (i:In):Future<Option<R>>
-        return this.transformer(i).map(function (o) return switch o {
-          case Some(o): transformer(o);
-          case None: None;
-        })
+      function (i:In):Future<Maybe<R>>
+        return this.transformer(i).map(function (o) return o.flatMap(transformer))
     );
   
-  function chainAsync<R>(transformer:Out->Future<Option<R>>):Stream<R>
+  function chainAsync<R>(transformer:Out->Future<Maybe<R>>):Stream<R>
     return new StreamMapFilterAsync<In, R>(
       data, 
-      function (i:In):Future<Option<R>>
+      function (i:In):Future<Maybe<R>>
         return this.transformer(i).flatMap(function (o) return switch o {
-          case Some(o): transformer(o);
-          case None: Future.sync(None);
+          case v if (v.isSet()): transformer(v.get());
+          default: Future.sync(Maybe.None());
         })
     );
   
   override public function forEachAsync(item:Out -> Future<Bool>):Surprise<Bool, Error> {
     return data.forEachAsync(function (x) {
       return transformer(x).flatMap(function (x) return switch x {
-        case None: Future.sync(true);
-        case Some(v): item(v);
+        case v if (v.isSet()): item(v.get());
+        default: Future.sync(true);
       }, false);
     });
   }

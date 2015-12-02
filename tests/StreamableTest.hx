@@ -24,16 +24,18 @@ class StreamableTest extends TestCase {
   function sum(a, b) return a + b;
   
   function testPerformance() {
-    var a = [for (i in 0...10000) i];
+    var size = 100000,
+        repeat = 3;
+    var a = [for (i in 0...size) i];
     var s:Streamable<Int> = new IterableStreamable(a);
     
     var ta = measure(function () {
-      for (x in 0...100) a = a.map(inc).map(dec);
+      for (x in 0...repeat) a = a.map(inc).map(dec);
       Lambda.fold(a, sum, 0);
     });
     
     var ts = measure(function () {
-      for (x in 0...100) s = s.map(inc).map(dec);
+      for (x in 0...repeat) s = s.map(inc).map(dec);
       var called = false;
       s.stream().fold(0, sum).handle(function () {
         called = true;
@@ -41,13 +43,23 @@ class StreamableTest extends TestCase {
       assertTrue(called);
     });
     
-    assertTrue(ts < ta * Math.sqrt(10));//half an order of magnitude is ok ... for now ... on node, we're actually *faster*
+    var fastEnough = ts < ta;//being faster is good enough for now
+    if (!fastEnough)
+      trace([ts, ta]);
+    assertTrue(fastEnough);
   }
   
   function measure(f) {
-    var start = Timer.stamp();
+    function stamp()
+      return 
+        #if sys
+          Sys.cpuTime();
+        #else
+          haxe.Timer.stamp();
+        #end
+    var start = stamp();
     f();
-    return Timer.stamp() - start;
+    return stamp() - start;
   }
   
 }

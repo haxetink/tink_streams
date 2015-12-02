@@ -12,7 +12,7 @@ class Accumulator<T> extends StepWise<T> {
   
   public function new() {
     buffered = [];
-    waiting = [];
+    waiting = new Array<FutureTrigger<StreamStep<T>>>();
   }
   
   override public function next():Future<StreamStep<T>> 
