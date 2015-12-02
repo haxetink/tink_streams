@@ -28,11 +28,19 @@ class StreamRepeatable<T> extends StreamableBase<T> {
   public function new(source:Stream<T>) {
     super();
     this.buffer = [];
-    this.source = new CopyStream(source, function (step) switch step {
-      case Data(d): buffer.push(d);
-      case End: source = null;
-      case Fail(e): source = null; error = e;
-    });
+    this.source = new CopyStream(source, buffer.push, onEnd);
+  }
+  
+  function onEnd(o:Outcome<Bool, Error>) {
+    if (source == null) return;
+    switch o {
+      case Success(false):
+      case Success(true):
+        source = null;
+      case Failure(e):
+        source = null;
+        error = e;
+    }
   }
   
   override public function cache():Streamable<T>
@@ -40,24 +48,31 @@ class StreamRepeatable<T> extends StreamableBase<T> {
     
   override public function stream():Stream<T>
     return
-      if (source != null) new CompoundStream([buffer.iterator(), source]);
-      else new IteratorStream(buffer.iterator(), error);
+      if (source != null) 
+        ConcatStream.make([buffer.iterator(), source]);
+      else 
+        new IteratorStream(buffer.iterator(), error);
   
 }
 
 private class CopyStream<T> extends StreamBase<T> {
   
   var source:Stream<T>;
-  var cb:StreamStep<T>->Void;
+  var onItem:T->Void;
+  var onEnd:Outcome<Bool, Error>->Void;
   
-  public function new(source, cb) {
+  public function new(source, onItem, onEnd) {
     this.source = source;
-    this.cb = cb;
+    this.onItem = onItem;
+    this.onEnd = onEnd;
   }
   
-  override public function next() {
-    var ret = source.next();
-    ret.handle(cb);
+  override public function forEachAsync(item:T -> Future<Bool>):Surprise<Bool, Error> {
+    var ret = source.forEachAsync(function (x) {
+      onItem(x);
+      return item(x);
+    });
+    ret.handle(onEnd);
     return ret;
   }
   

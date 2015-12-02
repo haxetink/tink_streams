@@ -3,6 +3,7 @@ package;
 import haxe.unit.TestCase;
 import tink.streams.Accumulator;
 import tink.streams.Stream;
+import tink.streams.StreamStep;
 
 using tink.CoreApi;
 
@@ -58,7 +59,7 @@ class StreamTest extends TestCase {
     test(function (s:Stream<A>, start:R, cb:A->R->R) return s.foldAsync(start, function (a, r) return Future.sync(cb(a, r))));        
   }    
     
-  function forEach<A>(test:(Stream<A>->(A->Bool)->Surprise<Noise, Error>)->Void) {
+  function forEach<A>(test:(Stream<A>->(A->Bool)->Surprise<Bool, Error>)->Void) {
     test(function (s:Stream<A>, cb:A->Bool) return s.forEach(cb));
     test(function (s:Stream<A>, cb:A->Bool) return s.forEachAsync(lift(cb)));        
   }
@@ -121,13 +122,24 @@ class StreamTest extends TestCase {
       });
     });
   
+  function testConcat()
+    fold(function (fold) {
+      var s = ConcatStream.make([for (i in 0...3) [for (i in i...3+i) i].iterator()]);
+      fold(s, '', function (a, b) return '$b,$a').handle(function (x) {
+        assertEquals(',0,1,2,1,2,3,2,3,4', x.sure());
+      });
+    });
+    
   function testGenerator() 
     fold(function (fold) {
-    
-      function squares()
-        return new IteratorStream([for (i in 0...100) i].iterator()).filter(function (i) return Math.floor(Math.sqrt(i)) == Math.sqrt(i));
-        
-      var g = Stream.generate(squares().next);
+      var i = 0;
+      var g = Stream.generate(
+        function () 
+          return Future.sync(
+            if (i == 10) End
+            else Data(i * i++)
+          )
+      );
       fold(g, [], function (x, y) return y.concat([x])).handle(function (x) {
         assertEquals('0,1,4,9,16,25,36,49,64,81', x.sure().join(','));
       });

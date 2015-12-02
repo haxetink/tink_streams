@@ -40,7 +40,7 @@ class StreamableTest extends TestCase {
       });
       assertTrue(called);
     });
-    //trace([ta, ts]);
+    
     assertTrue(ts < ta * Math.sqrt(10));//half an order of magnitude is ok ... for now ... on node, we're actually *faster*
   }
   

@@ -4,7 +4,7 @@ import tink.streams.Stream;
 
 using tink.CoreApi;
 
-class Accumulator<T> extends StreamBase<T> {
+class Accumulator<T> extends StepWise<T> {
   
   var end:StreamStep<T>;
   var buffered:Array<StreamStep<T>>;
