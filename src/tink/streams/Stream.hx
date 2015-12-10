@@ -14,10 +14,10 @@ abstract Stream<T>(StreamObject<T>) from StreamObject<T> to StreamObject<T> {
   @:from static public function generate<T>(step:Void->Future<StreamStep<T>>):Stream<T>
     return new Generator(step);
   
-  public function fold<R>(start:R, reduce:T->R->R):Surprise<R, Error>
+  public function fold<R>(start:R, reduce:R->T->R):Surprise<R, Error>
     return Future.async(function (cb) {
       this.forEach(function (x) {
-        start = reduce(x, start);
+        start = reduce(start, x);
         return true;
       }).handle(function (o) cb(switch o {
         case Failure(e):
@@ -27,10 +27,10 @@ abstract Stream<T>(StreamObject<T>) from StreamObject<T> to StreamObject<T> {
       }));
     });  
   
-  public function foldAsync<R>(start:R, reduce:T->R->Future<R>):Surprise<R, Error>
+  public function foldAsync<R>(start:R, reduce:R->T->Future<R>):Surprise<R, Error>
     return Future.async(function (cb) {
       this.forEachAsync(function (x) {
-        return reduce(x, start).map(function (v) { start = v; return true; });
+        return reduce(start, x).map(function (v) { start = v; return true; });
       }).handle(function (o) cb(switch o {
         case Failure(e):
           Failure(e);

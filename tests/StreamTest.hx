@@ -54,9 +54,9 @@ class StreamTest extends TestCase {
       assertEquals('1,2,3,4,5,6,7,8,9,10', out.join(','));
     }));
 
-  function fold<A,R>(test:(Stream<A>->R->(A->R->R)->Surprise<R, Error>)->Void) {
-    test(function (s:Stream<A>, start:R, cb:A->R->R) return s.fold(start, cb));
-    test(function (s:Stream<A>, start:R, cb:A->R->R) return s.foldAsync(start, function (a, r) return Future.sync(cb(a, r))));        
+  function fold<A,R>(test:(Stream<A>->R->(R->A->R)->Surprise<R, Error>)->Void) {
+    test(function (s:Stream<A>, start:R, cb:R->A->R) return s.fold(start, cb));
+    test(function (s:Stream<A>, start:R, cb:R->A->R) return s.foldAsync(start, function (a, r) return Future.sync(cb(a, r))));        
   }    
     
   function forEach<A>(test:(Stream<A>->(A->Bool)->Surprise<Bool, Error>)->Void) {
@@ -125,7 +125,7 @@ class StreamTest extends TestCase {
   function testConcat()
     fold(function (fold) {
       var s = ConcatStream.make([for (i in 0...3) [for (i in i...3+i) i].iterator()]);
-      fold(s, '', function (a, b) return '$b,$a').handle(function (x) {
+      fold(s, '', function (ret, x) return '$ret,$x').handle(function (x) {
         assertEquals(',0,1,2,1,2,3,2,3,4', x.sure());
       });
     });
@@ -140,7 +140,7 @@ class StreamTest extends TestCase {
             else Data(i * i++)
           )
       );
-      fold(g, [], function (x, y) return y.concat([x])).handle(function (x) {
+      fold(g, [], function (ret, x) return ret.concat([x])).handle(function (x) {
         assertEquals('0,1,4,9,16,25,36,49,64,81', x.sure().join(','));
       });
     });
