@@ -45,6 +45,7 @@ abstract Stream<T>(StreamObject<T>) from StreamObject<T> to StreamObject<T> {
 
 interface StreamObject<T> {
     
+  function next():Future<StreamStep<T>>;
   function forEach(item:T->Bool):Surprise<Bool, Error>;
   function forEachAsync(item:T->Future<Bool>):Surprise<Bool, Error>;
   
@@ -105,8 +106,8 @@ class ConcatStream<T> extends StreamBase<T> {
   var parts:Array<Stream<T>>;
 
   function new(parts) 
-    this.parts = parts;
-  
+    this.parts = parts;  
+    
   override public function filter(item:T->Bool):Stream<T> 
     return transform(function (x) return x.filter(item));
     
@@ -196,7 +197,7 @@ class IteratorStream<T> extends StepWise<T> {
 
 
 class StepWise<T> extends StreamBase<T> {
-  public function next():Future<StreamStep<T>>
+  override public function next():Future<StreamStep<T>>
     return Future.sync(End);
     
   override public function forEach(item:T->Bool):Surprise<Bool, Error> 
@@ -258,6 +259,19 @@ class StepWise<T> extends StreamBase<T> {
 }
 
 class StreamBase<T> implements StreamObject<T> {
+  
+  public function next():Future<StreamStep<T>> 
+    return Future.async(function (cb) {
+      forEach(function (x) {
+        cb(Data(x));
+        return false;
+      }).handle(function (o) switch o {
+        case Success(true): cb(End);
+        case Failure(e): cb(Fail(e));
+        default:
+      });
+    });
+  
   public function forEach(item:T->Bool):Surprise<Bool, Error>
     return forEachAsync(function (x) return Future.sync(item(x)));
     
