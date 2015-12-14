@@ -11,6 +11,9 @@ abstract Stream<T>(StreamObject<T>) from StreamObject<T> to StreamObject<T> {
   @:from static public function ofIterator<T>(i:Iterator<T>):Stream<T>
     return new IteratorStream(i);
     
+  @:from static public function failure<T>(e:Error):Stream<T>
+    return generate(function () return Future.sync(Fail(e)));
+    
   @:from static public function generate<T>(step:Void->Future<StreamStep<T>>):Stream<T>
     return new Generator(step);
   
