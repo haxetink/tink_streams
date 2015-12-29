@@ -1,8 +1,6 @@
 package tink.streams;
 
-//import haxe.ds.Option;
 import tink.streams.StreamStep;
-//import tink.streams.Stream.Maybe.*;
 using tink.CoreApi;
 
 @:forward
