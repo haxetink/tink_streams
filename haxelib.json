@@ -12,7 +12,7 @@
 	"contributors": [
 		"back2dos"
 	],
-	"releasenote": "Initial release.",
+	"releasenote": "Some tweaks.",
 	"version": "0.0.0",
 	"url": "http://haxetink.org/tink_streams",
 	"dependencies": {
