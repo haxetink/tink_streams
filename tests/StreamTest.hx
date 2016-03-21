@@ -129,7 +129,10 @@ class StreamTest extends TestCase {
         assertEquals(',0,1,2,1,2,3,2,3,4', x.sure());
       });
     });
-    
+  
+  #if (php && haxe_ver < 3.3)
+  
+  #else
   function testGenerator() 
     fold(function (fold) {
       var i = 0;
@@ -144,4 +147,5 @@ class StreamTest extends TestCase {
         assertEquals('0,1,4,9,16,25,36,49,64,81', x.sure().join(','));
       });
     });
+  #end
 }
