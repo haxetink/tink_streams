@@ -6,6 +6,9 @@ using tink.CoreApi;
 @:forward
 abstract Stream<T>(StreamObject<T>) from StreamObject<T> to StreamObject<T> {
   
+  @:from static public function later<T>(f:Surprise<Stream<T>, Error>):Stream<T>
+    return new FutureStream(f);
+  
   @:from static public function ofIterator<T>(i:Iterator<T>):Stream<T>
     return new IteratorStream(i);
     
@@ -42,6 +45,29 @@ abstract Stream<T>(StreamObject<T>) from StreamObject<T> to StreamObject<T> {
     
   @:op(a...b) static public function concat<A>(a:Stream<A>, b:Stream<A>):Stream<A> 
     return ConcatStream.make([a, b]);
+}
+
+private class FutureStream<T> extends StreamBase<T> {
+  
+  var target:Surprise<Stream<T>, Error>;
+  
+  public function new(target)
+    this.target = target;
+    
+  function later<Out>(f:Stream<T>->Surprise<Out, Error>):Surprise<Out, Error>
+    return 
+      Future.async(function (cb) 
+        target.handle(function (o) switch o {
+          case Failure(e): cb(Failure(e));
+          case Success(s): f(s).handle(cb);
+        })
+      );
+      
+  override public function forEach(item:T->Bool):Surprise<Bool, Error> 
+    return later(function (s) return s.forEach(item));
+  
+  override public function forEachAsync(item:T->Future<Bool>):Surprise<Bool, Error> 
+    return later(function (s) return s.forEachAsync(item));
 }
 
 interface StreamObject<T> {
@@ -277,7 +303,7 @@ class StreamBase<T> implements StreamObject<T> {
     return forEachAsync(function (x) return Future.sync(item(x)));
     
   public function forEachAsync(item:T->Future<Bool>):Surprise<Bool, Error> 
-  return Future.sync(Success(true));
+    return Future.sync(Success(true));
 
   public function map<R>(item:T->R):Stream<R>
     return new StreamMap(this, item);
