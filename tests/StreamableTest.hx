@@ -24,8 +24,8 @@ class StreamableTest extends TestCase {
   function sum(a, b) return a + b;
   
   function testPerformance() {
-    var size = 100000,
-        repeat = 3;
+    var size = 10000,
+        repeat = 30;
     var a = [for (i in 0...size) i];
     var s:Streamable<Int> = new IterableStreamable(a);
     
