@@ -28,7 +28,9 @@ class Accumulator<T> extends StepWise<T> {
           case v:
             Future.sync(v);
         }
-  
+  #if php
+  @:native('accumulate')
+  #end
   public function yield(step:StreamStep<T>) {
     if (end != null) 
       return;
