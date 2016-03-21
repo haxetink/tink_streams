@@ -23,6 +23,7 @@ class StreamableTest extends TestCase {
   function dec(x) return x - 1;
   function sum(a, b) return a + b;
   
+  #if !php
   function testPerformance() {
     var size = 100000,
         repeat = 3;
@@ -43,11 +44,12 @@ class StreamableTest extends TestCase {
       assertTrue(called);
     });
     
-    var fastEnough = ts < ta * 10;//not needing more than one order of magnitude will have to do for now ... mostly because of PHP
+    var fastEnough = ts < ta * Math.sqrt(10);
     if (!fastEnough)
       trace([ts, ta]);
     assertTrue(fastEnough);
   }
+  #end
   
   function measure(f) {
     function stamp()
