@@ -105,6 +105,30 @@ class Generator<T> extends StepWise<T> {
   }
 }
 
+#if cs
+private abstract Maybe<T>(Ref<T>) {
+  inline function new(o) this = o;
+  
+  @:to public inline function isSet():Bool
+    return this != null;
+  
+  public inline function get():T
+    return this;
+    
+  public inline function map<R>(f:T->R):Maybe<R>
+    return 
+      if (isSet()) Maybe.Some(f(this));
+      else Maybe.None();
+    
+  public inline function flatMap<R>(f:T->Maybe<R>):Maybe<R>
+    return
+      if (isSet()) f(this);
+      else Maybe.None();
+  
+  static public inline function Some<T>(v:T):Maybe<T> return new Maybe(v);
+  static public inline function None<T>():Maybe<T> return null;
+}
+#else
 private abstract Maybe<T>(Null<T>) {
   inline function new(o) this = o;
   
@@ -127,6 +151,7 @@ private abstract Maybe<T>(Null<T>) {
   static public inline function Some<T>(v:T):Maybe<T> return new Maybe(v);
   static public inline function None<T>():Maybe<T> return null;
 }
+#end
 
 
 class ConcatStream<T> extends StreamBase<T> {

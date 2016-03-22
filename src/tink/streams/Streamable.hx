@@ -24,34 +24,34 @@ class StreamRepeatable<T> extends StreamableBase<T> {
   var buffer:Array<T>;
   var error:Null<Error>;
   var source:Stream<T>;
-  
+      
   public function new(source:Stream<T>) {
     super();
     this.buffer = [];
     this.source = new CopyStream(source, buffer.push, onEnd);
   }
   
-  function onEnd(o:Outcome<Bool, Error>) {
-    if (source == null) return;
-    switch o {
-      case Success(false):
-      case Success(true):
-        source = null;
-      case Failure(e):
-        source = null;
-        error = e;
-    }
-  }
+  function onEnd(o:Outcome<Bool, Error>) 
+    if (source != null)
+      switch o {
+        case Success(false):
+        case Success(true):
+          source = null;
+        case Failure(e):
+          source = null;
+          error = e;
+      }
   
   override public function cache():Streamable<T>
     return this;
     
-  override public function stream():Stream<T>
+  override public function stream():Stream<T> {
     return
       if (source != null) 
         ConcatStream.make([buffer.iterator(), source]);
       else 
         new IteratorStream(buffer.iterator(), error);
+  }
   
 }
 

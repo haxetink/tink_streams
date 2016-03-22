@@ -8,9 +8,9 @@ import tink.streams.Streamable;
 using tink.CoreApi;
 
 class StreamableTest extends TestCase {
-
+  #if !cs
   function testRepeat() {
-    var s:Stream<Int> = [0, 1, 2, 3, 4].iterator();
+    var s:Stream<Int> = 0...5;
     var c:Streamable<Int> = s;
     var calls = 0;
     c.stream().fold(0, sum).handle(function (x) { assertEquals(10, x.sure()); calls++; });
@@ -18,6 +18,7 @@ class StreamableTest extends TestCase {
     c.stream().fold(0, sum).handle(function (x) { assertEquals(10, x.sure()); calls++; });
     assertEquals(3, calls);
   }
+  #end
   
   function inc(x) return x + 1;
   function dec(x) return x - 1;
