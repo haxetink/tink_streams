@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/haxetink/tink_url.svg?branch=master)](https://travis-ci.org/haxetink/tink_url)
+
 # Tinkerbell Stream
 
 This library provides two streaming abstractions, where streaming can be understood as asynchronous iteration.
