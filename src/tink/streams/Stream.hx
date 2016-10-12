@@ -82,6 +82,9 @@ interface StreamObject<T> {
   function filter(item:T->Bool):Stream<T>;
   function filterAsync(item:T->Future<Bool>):Stream<T>;
   
+  function merge<R>(item:Array<T>->Option<R>):Stream<R>;
+  function mergeAsync<R>(item:Array<T>->Future<Option<R>>):Stream<R>;
+  
 }
 
 class Generator<T> extends StepWise<T> {
@@ -171,6 +174,12 @@ class ConcatStream<T> extends StreamBase<T> {
     
   override public function mapAsync<R>(item:T->Future<R>):Stream<R> 
     return transform(function (x) return x.mapAsync(item));
+    
+  override public function merge<R>(item:Array<T>->Option<R>):Stream<R> 
+    return transform(function (x) return x.merge(item));
+    
+  override public function mergeAsync<R>(item:Array<T>->Future<Option<R>>):Stream<R> 
+    return transform(function (x) return x.mergeAsync(item));
     
   function transform<Out>(t:Stream<T>->Stream<Out>):Stream<Out>
     return new ConcatStream([for (p in parts) t(p)]);
@@ -342,6 +351,12 @@ class StreamBase<T> implements StreamObject<T> {
   public function filterAsync(item:T->Future<Bool>):Stream<T>
     return new StreamFilterAsync(this, item);
     
+  public function merge<R>(item:Array<T>->Option<R>):Stream<R>
+    return new StreamMerge(this, item);
+  
+  public function mergeAsync<R>(item:Array<T>->Future<Option<R>>):Stream<R>
+    return new StreamMergeAsync(this, item);
+    
 }
 
 
@@ -359,6 +374,25 @@ abstract StreamMap<In, Out>(StreamMapFilter<In, Out>) to Stream<Out> {
     
   static public function lift<In, Out>(map:In->Out)
     return function (x) return Maybe.Some(map(x));
+}
+
+abstract StreamMerge<In, Out>(StreamMapFilter<In, Out>) to Stream<Out> {
+  public inline function new(data, merger:Array<In>->Option<Out>)
+    this = new StreamMapFilter(data, lift(merger));
+  
+  static public function lift<In, Out>(merger:Array<In>->Option<Out>) {
+    var buffer = [];
+    return function(x) {
+      buffer.push(x);
+      return switch merger(buffer) {
+        case Some(v):
+          buffer = []; 
+          Maybe.Some(v);
+        case None:
+          Maybe.None();
+      }
+    }
+  }
 }
 
 class StreamMapFilter<In, Out> extends StreamBase<Out> {
@@ -432,6 +466,25 @@ abstract StreamMapAsync<In, Out>(StreamMapFilterAsync<In, Out>) to Stream<Out> {
     return function (x) return map(x).map(Maybe.Some);
 }
 
+abstract StreamMergeAsync<In, Out>(StreamMapFilterAsync<In, Out>) to Stream<Out> {
+  public inline function new(data, merger:Array<In>->Future<Option<Out>>)
+    this = new StreamMapFilterAsync(data, lift(merger));
+  
+  static public function lift<In, Out>(merger:Array<In>->Future<Option<Out>>) {
+    var buffer = [];
+    return function(x) {
+      buffer.push(x);
+      return merger(buffer).map(function(o) return switch o {
+        case Some(v):
+          buffer = []; 
+          Maybe.Some(v);
+        case None:
+          Maybe.None();
+      });
+    }
+  }
+}
+
 class StreamMapFilterAsync<In, Out> extends StreamBase<Out> {
   var transformer:In->Future<Maybe<Out>>;
   var data:Stream<In>;
@@ -473,9 +526,15 @@ class StreamMapFilterAsync<In, Out> extends StreamBase<Out> {
   override public function mapAsync<R>(item:Out->Future<R>):Stream<R>
     return chainAsync(StreamMapAsync.lift(item));
     
+  override public function mergeAsync<R>(item:Array<Out>->Future<Option<R>>):Stream<R>
+    return chainAsync(StreamMergeAsync.lift(item));
+    
+    override public function filter(item:Out->Bool):Stream<Out>
+    return chain(StreamFilter.lift(item));
+    
   override public function map<R>(item:Out->R):Stream<R>
     return chain(StreamMap.lift(item));
     
-  override public function filter(item:Out->Bool):Stream<Out>
-    return chain(StreamFilter.lift(item));     
+  override public function merge<R>(item:Array<Out>->Option<R>):Stream<R>
+    return chain(StreamMerge.lift(item));
 }
