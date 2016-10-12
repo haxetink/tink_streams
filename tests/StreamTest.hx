@@ -53,6 +53,19 @@ class StreamTest extends TestCase {
       
       assertEquals('1,2,3,4,5,6,7,8,9,10', out.join(','));
     }));
+    
+  function testMerge() 
+    forEach(function (forEach) merge(function (merge) {
+      var a = [for (i in 0...10) i];
+      
+      var inc = new IteratorStream(a.iterator()).merge(function (x) return x[x.length - 1] & 1 == 1 ? Some(Lambda.fold(x, function(i, s) return s + i, 0)) : None);
+      
+      var out = [];
+      
+      forEach(inc, function (x) return out.push(x) > 0);
+      
+      assertEquals('1,5,9,13,17', out.join(','));
+    }));
 
   function fold<A,R>(test:(Stream<A>->R->(R->A->R)->Surprise<R, Error>)->Void) {
     test(function (s:Stream<A>, start:R, cb:R->A->R) return s.fold(start, cb));
@@ -72,6 +85,11 @@ class StreamTest extends TestCase {
   function map<A, R>(test:(Stream<A>->(A->R)->Stream<R>)->Void) {
     test(function (s:Stream<A>, cb:A->R) return s.map(cb));
     test(function (s:Stream<A>, cb:A->R) return s.mapAsync(lift(cb)));        
+  }
+  
+  function merge<A, R>(test:(Stream<A>->(Array<A>->Option<R>)->Stream<R>)->Void) {
+    test(function (s:Stream<A>, cb:Array<A>->Option<R>) return s.merge(cb));
+    test(function (s:Stream<A>, cb:Array<A>->Option<R>) return s.mergeAsync(lift(cb)));
   }
   
   function testAccumulator() 
