@@ -377,22 +377,22 @@ abstract StreamMap<In, Out>(StreamMapFilter<In, Out>) to Stream<Out> {
 }
 
 abstract StreamMerge<In, Out>(StreamMapFilter<In, Out>) to Stream<Out> {
-	public inline function new(data, merger:Array<In>->Option<Out>)
-		this = new StreamMapFilter(data, lift(merger));
-	
-	static public function lift<In, Out>(merger:Array<In>->Option<Out>) {
-		var buffer = [];
-		return function(x) {
-			buffer.push(x);
-			return switch merger(buffer) {
-				case Some(v):
-					buffer = []; 
-					Maybe.Some(v);
-				case None:
-					Maybe.None();
-			}
-		}
-	}
+  public inline function new(data, merger:Array<In>->Option<Out>)
+    this = new StreamMapFilter(data, lift(merger));
+  
+  static public function lift<In, Out>(merger:Array<In>->Option<Out>) {
+    var buffer = [];
+    return function(x) {
+      buffer.push(x);
+      return switch merger(buffer) {
+        case Some(v):
+          buffer = []; 
+          Maybe.Some(v);
+        case None:
+          Maybe.None();
+      }
+    }
+  }
 }
 
 class StreamMapFilter<In, Out> extends StreamBase<Out> {
@@ -467,22 +467,22 @@ abstract StreamMapAsync<In, Out>(StreamMapFilterAsync<In, Out>) to Stream<Out> {
 }
 
 abstract StreamMergeAsync<In, Out>(StreamMapFilterAsync<In, Out>) to Stream<Out> {
-	public inline function new(data, merger:Array<In>->Future<Option<Out>>)
-		this = new StreamMapFilterAsync(data, lift(merger));
-	
-	static public function lift<In, Out>(merger:Array<In>->Future<Option<Out>>) {
-		var buffer = [];
-		return function(x) {
-			buffer.push(x);
-			return merger(buffer).map(function(o) return switch o {
+  public inline function new(data, merger:Array<In>->Future<Option<Out>>)
+    this = new StreamMapFilterAsync(data, lift(merger));
+  
+  static public function lift<In, Out>(merger:Array<In>->Future<Option<Out>>) {
+    var buffer = [];
+    return function(x) {
+      buffer.push(x);
+      return merger(buffer).map(function(o) return switch o {
         case Some(v):
           buffer = []; 
           Maybe.Some(v);
         case None:
           Maybe.None();
       });
-		}
-	}
+    }
+  }
 }
 
 class StreamMapFilterAsync<In, Out> extends StreamBase<Out> {
