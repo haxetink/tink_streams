@@ -108,6 +108,41 @@ class Generator<T> extends StepWise<T> {
   }
 }
 
+class Manually<T> extends StepWise<T> {
+	
+	var pending:List<FutureTrigger<StreamStep<T>>>;
+	var triggered:List<FutureTrigger<StreamStep<T>>>;
+	
+	
+	public function new() {
+		pending = new List();
+		triggered = new List();
+	}
+	
+	override function next():Future<StreamStep<T>> {
+		return switch triggered.pop() {
+			case null:
+				var trigger = Future.trigger();
+				pending.add(trigger);
+				trigger;
+			case trigger:
+				trigger;
+		}
+	}
+	
+	public function trigger(value:T) {
+		var trigger = switch pending.pop() {
+			case null:
+				var trigger = Future.trigger();
+				triggered.add(trigger);
+				trigger;
+			case trigger:
+				trigger;
+		}
+		trigger.trigger(Data(value));
+	}
+}
+
 #if cs
 private abstract Maybe<T>(Ref<T>) {
   inline function new(o) this = o;
