@@ -130,7 +130,7 @@ class Manually<T> extends StepWise<T> {
 		}
 	}
 	
-	public function trigger(value:T) {
+	public function step(value:StreamStep<T>) {
 		var trigger = switch pending.pop() {
 			case null:
 				var trigger = Future.trigger();
@@ -139,7 +139,7 @@ class Manually<T> extends StepWise<T> {
 			case trigger:
 				trigger;
 		}
-		trigger.trigger(Data(value));
+		trigger.trigger(value);
 	}
 }
 
