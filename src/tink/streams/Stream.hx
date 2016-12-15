@@ -13,10 +13,8 @@ abstract Stream<T>(StreamObject<T>) to StreamObject<T> from StreamObject<T> from
       
 }
 
-class StreamError<T> extends TypedError<{
-  var cause(default, null):Error;
-  var rest(default, null):Stream<T>;
-}> {
+class StreamError<T> extends TypedError<{ var cause(default, null):Error; var rest(default, null):Stream<T>; }> {
+  
   public function new(cause:Error, rest:Stream<T>) {
     super(cause.code, cause.message, cause.pos);
     this.data = {
@@ -24,6 +22,7 @@ class StreamError<T> extends TypedError<{
       rest: rest,
     };
   }
+  
 }
 
 interface StreamObject<T> {
