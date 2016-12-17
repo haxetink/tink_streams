@@ -13,15 +13,45 @@ abstract Stream<T>(StreamObject<T>) to StreamObject<T> from StreamObject<T> from
       
 }
 
-class StreamError<T> extends TypedError<{ var cause(default, null):Error; var rest(default, null):Stream<T>; }> {
+class StreamErrorOn<T, S> extends TypedError<{ var cause(default, null):Error; var rest(default, null):S; }> {
   
-  public function new(cause:Error, rest:Stream<T>) {
+  public function new(cause:Error, rest:S) {
     super(cause.code, cause.message, cause.pos);
     this.data = {
       cause: cause,
       rest: rest,
     };
   }
+  
+}
+
+typedef StreamError<T> = StreamErrorOn<T, Stream<T>>;
+
+class Cell<T> extends StreamBase<T> {
+  var next:Promise<Pair<T, Stream<T>>>;
+  
+  public function new(next)
+    this.next = next;
+  
+  override public function forEach(consume:Next<T, Bool>):Surprise<Stream<T>, StreamError<T>> 
+    return progress(this, next, consume);
+    
+  static public function progress<T>(head:Stream<T>, next:Promise<Pair<T, Stream<T>>>, consume:Next<T, Bool>):Surprise<Stream<T>, StreamError<T>> 
+    return Future.async(function (cb) {
+      next.handle(function (step) switch step {
+        case Success({ a: item, b: rest }):
+          consume(item).handle(function (o) switch o {
+            case Success(true):
+              rest.forEach(consume).handle(cb);
+            case Success(false):
+              cb(Success(rest));
+            case Failure(e):
+              cb(Failure(new StreamError(e, head)));
+          });          
+        case Failure(e):
+          cb(Failure(new StreamError(e, head)));
+      });
+    });
   
 }
 
@@ -110,4 +140,57 @@ private class IdealizeStream<T> extends IdealStreamBase<T> {
       case Failure(e):
         _idealize(e);
     });
+}
+
+class CompoundStream<T> extends StreamBase<T> {
+  var parts:Array<Stream<T>>;
+  
+  function new(parts) 
+    this.parts = parts;
+  
+  static function consumeParts<T>(parts:Array<Stream<T>>, consume:Next<T, Bool>, cb:Outcome<Stream<T>, StreamError<T>>->Void) 
+    if (parts.length == 0)
+      cb(Success((Empty.inst : Stream<T>)));
+    else
+      parts[0].forEach(consume).handle(function (o) switch o {
+        case Success({ depleted: true }):
+          
+          consumeParts(parts.slice(1), consume, cb);
+          
+        case Success(rest):
+          
+          parts = parts.copy();
+          parts[0] = rest;
+          cb(Success((new CompoundStream(parts) : Stream<T>)));
+          
+        case Failure(e):
+          
+          if (e.data.rest.depleted)
+            parts = parts.slice(1);
+          else {
+            parts = parts.copy();
+            parts[0] = e.data.rest;
+          }
+          
+          cb(Failure(new StreamError(e.data.cause, new CompoundStream(parts))));
+      });
+    
+  override public function forEach(consume:Next<T, Bool>):Surprise<Stream<T>, StreamError<T>> 
+    return Future.async(consumeParts.bind(parts, consume, _));
+  
+  static public function of<T>(streams:Array<Stream<T>>):Stream<T> {
+    var ret = [];
+    for (s in streams)
+      switch Std.instance(s, CompoundStream) {
+        case null:
+          if (!s.depleted)
+            ret.push(s);
+        case v:
+          for (p in v.parts)
+            ret.push(p);
+      }
+    return 
+      if (ret.length == 0) Empty.inst;
+      else new CompoundStream(ret);
+  }
 }

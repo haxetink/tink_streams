@@ -3,7 +3,7 @@ package;
 import haxe.unit.TestCase;
 import tink.streams.Accumulator;
 import tink.streams.Stream;
-import tink.streams.StreamStep;
+import tink.streams.Step;
 
 using tink.CoreApi;
 
