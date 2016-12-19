@@ -1,196 +1,135 @@
 package tink.streams;
 
-import tink.streams.IdealStream;
-
 using tink.CoreApi;
 
-@:forward
-abstract Stream<T>(StreamObject<T>) to StreamObject<T> from StreamObject<T> from IdealStream<T> {
+abstract Stream<T, E>(StreamObject<T, E>) from StreamObject<T, E> to StreamObject<T, E> {
   
   public var depleted(get, never):Bool;
     inline function get_depleted()
-      return this.depleted();
+      return this.depleted();  
       
-}
-
-class StreamErrorOn<T, S> extends TypedError<{ var cause(default, null):Error; var rest(default, null):S; }> {
-  
-  public function new(cause:Error, rest:S) {
-    super(cause.code, cause.message, cause.pos);
-    this.data = {
-      cause: cause,
-      rest: rest,
-    };
-  }
-  
-}
-
-typedef StreamError<T> = StreamErrorOn<T, Stream<T>>;
-
-class Cell<T> extends StreamBase<T> {
-  var next:Promise<Pair<T, Stream<T>>>;
-  
-  public function new(next)
-    this.next = next;
-  
-  override public function forEach(consume:Next<T, Bool>):Surprise<Stream<T>, StreamError<T>> 
-    return progress(this, next, consume);
+  public inline function forEach<C>(consume:Consumer<T, C>):Result<T, C, E>
+    return this.forEach(consume);
     
-  static public function progress<T>(head:Stream<T>, next:Promise<Pair<T, Stream<T>>>, consume:Next<T, Bool>):Surprise<Stream<T>, StreamError<T>> 
-    return Future.async(function (cb) {
-      next.handle(function (step) switch step {
-        case Success({ a: item, b: rest }):
-          consume(item).handle(function (o) switch o {
-            case Success(true):
-              rest.forEach(consume).handle(cb);
-            case Success(false):
-              cb(Success(rest));
-            case Failure(e):
-              cb(Failure(new StreamError(e, head)));
-          });          
-        case Failure(e):
-          cb(Failure(new StreamError(e, head)));
-      });
-    });
-  
+  @:noCompletion public inline function decompose(into)
+    this.decompose(into);
+    
 }
 
-interface StreamObject<T> {
+interface StreamObject<T, E> {
   function depleted():Bool;
-  function idealize(rescue:StreamError<T>->IdealStream<T>):IdealStream<T>;
-  function map<A>(f:Next<T, A>):Stream<A>;
-  function filter(f:Next<T, Bool>):Stream<T>;
-  function forEach(consume:Next<T, Bool>):Surprise<Stream<T>, StreamError<T>>;
+  function decompose(into:Array<Stream<T, E>>):Void;
+  function forEach<C>(consume:Consumer<T, C>):Result<T, C, E>;
 }
 
-private class FilterStream<T> extends StreamBase<T> {
-  var target:Stream<T>;
-  var test:Next<T, Bool>;
-  
-  override public function depleted():Bool 
-    return target.depleted;
-  
-  public function new(target, test) {
-    this.target = target;
-    this.test = test;
-  }
-  
-  override public function forEach(consume:Next<T, Bool>):Surprise<Stream<T>, StreamError<T>> 
-    return super.forEach(function (item) 
-      return test(item).next(function (ok) return if (ok) consume(item) else true)
-    );
+enum Step<C> {
+  Halt:Step<C>;
+  Resume:Step<C>;
+  Fail(e:Error):Step<Error>;
+}
+
+enum End<T, C, S> {
+  Halted(rest:Stream<T, S>):End<T, C, S>;
+  Clogged(error:Error, at:Stream<T, S>):End<T, Error, S>;
+  Failed(error:Error):End<T, C, Error>;
+  Depleted:End<T, C, S>;
+}
+
+typedef Result<T, C, S> = Future<End<T, C, S>>;
+
+@:callable
+abstract Consumer<T, C>(T->Future<Step<C>>) from T->Future<Step<C>> {
   
 }
 
-private class MapStream<In, Out> extends StreamBase<Out> {
-  var target:Stream<In>;
-  var transform:Next<In, Out>;
+class Empty implements StreamObject<Dynamic, Dynamic> {
   
-  override public function depleted():Bool 
-    return target.depleted;
+  function new() {}
+  
+  public function depleted():Bool
+    return true;
+        
+  public function decompose(into:Array<Stream<Dynamic, Dynamic>>) {}
     
-  public function new(target, transform) {
-    this.target = target;
-    this.transform = transform;
-  }
-  
-  override public function forEach(consume:Next<Out, Bool>):Surprise<Stream<Out>, StreamError<Out>> 
-    return target.forEach(transform * consume).map(function (o) return switch o {
-      case Success(rest): Success(rest.map(transform));
-      case Failure(e): Failure(new StreamError(e.data.cause, e.data.rest.map(transform)));
-    });
+  public function forEach<C>(consume:Consumer<Dynamic, C>):Result<Dynamic, C, Dynamic> 
+    return Future.sync(Depleted);
+    
+  static var inst = new Empty();  
+    
+  static public inline function make<T, E>():Stream<T, E>
+    return cast inst;
   
 }
 
-class StreamBase<T> implements StreamObject<T> {
+class StreamBase<T, E> implements StreamObject<T, E> {
   
   public function depleted():Bool
     return false;
     
-  public function idealize(rescue:StreamError<T>->IdealStream<T>):IdealStream<T>
-    return new IdealizeStream(this, rescue);
+  public function decompose(into:Array<Stream<T, E>>) 
+    into.push(this);
     
-  public function forEach(consume:Next<T, Bool>):Surprise<Stream<T>, StreamError<T>>
-    return throw 'abstract';
+  public function forEach<C>(consume:Consumer<T, C>):Result<T, C, E> 
+    return throw 'not implemented';
     
-  public function map<A>(f:Next<T, A>):Stream<A>
-    return new MapStream(this, f);
-    
-  public function filter(f:Next<T, Bool>):Stream<T> 
-    return new FilterStream(this, f);
 }
 
-private class IdealizeStream<T> extends IdealStreamBase<T> {
+class CompoundStream<T, E> extends StreamBase<T, E> {
   
-  var target:Stream<T>;
-  var _idealize:StreamError<T>->IdealStream<T>;
+  var parts:Array<Stream<T, E>>;
   
-  public function new(target, idealize) {
-    this.target = target;
-    this._idealize = idealize;
-  }
-  
-  override public function depleted():Bool
-    return target.depleted;  
-  
-  override public function forEachSafely(consume:T->Future<Bool>):Future<IdealStream<T>>
-    return target.forEach(consume).map(function (o) return switch o {
-      case Success(stream):
-        stream.idealize(_idealize);
-      case Failure(e):
-        _idealize(e);
-    });
-}
-
-class CompoundStream<T> extends StreamBase<T> {
-  var parts:Array<Stream<T>>;
-  
-  function new(parts) 
+  function new(parts)
     this.parts = parts;
   
-  static function consumeParts<T>(parts:Array<Stream<T>>, consume:Next<T, Bool>, cb:Outcome<Stream<T>, StreamError<T>>->Void) 
+  override public function decompose(into:Array<Stream<T, E>>):Void 
+    for (p in parts)
+      p.decompose(into);
+  
+  override public function forEach<C>(consume:Consumer<T, C>):Result<T, C, E> 
+    return Future.async(consumeParts.bind(parts, consume, _));
+      
+  static function consumeParts<T, E, C>(parts:Array<Stream<T, E>>, consume:Consumer<T, C>, cb:End<T, C, E>->Void) 
     if (parts.length == 0)
-      cb(Success((Empty.inst : Stream<T>)));
+      cb(Depleted);
     else
       parts[0].forEach(consume).handle(function (o) switch o {
-        case Success({ depleted: true }):
+        case Depleted:
           
           consumeParts(parts.slice(1), consume, cb);
           
-        case Success(rest):
+        case Halted(rest):
           
           parts = parts.copy();
           parts[0] = rest;
-          cb(Success((new CompoundStream(parts) : Stream<T>)));
+          cb(Halted(new CompoundStream(parts)));
           
-        case Failure(e):
+        case Clogged(e, at):
           
-          if (e.data.rest.depleted)
+          if (at.depleted)
             parts = parts.slice(1);
           else {
             parts = parts.copy();
-            parts[0] = e.data.rest;
+            parts[0] = at;
           }
           
-          cb(Failure(new StreamError(e.data.cause, new CompoundStream(parts))));
-      });
+          cb(Clogged(e, new CompoundStream(parts)));
+          
+        case Failed(e):
+          
+          cb(Failed(e));
+                    
+      });  
+      
+  static public function of<T, E>(streams:Array<Stream<T, E>>):Stream<T, E> {
     
-  override public function forEach(consume:Next<T, Bool>):Surprise<Stream<T>, StreamError<T>> 
-    return Future.async(consumeParts.bind(parts, consume, _));
-  
-  static public function of<T>(streams:Array<Stream<T>>):Stream<T> {
     var ret = [];
+    
     for (s in streams)
-      switch Std.instance(s, CompoundStream) {
-        case null:
-          if (!s.depleted)
-            ret.push(s);
-        case v:
-          for (p in v.parts)
-            ret.push(p);
-      }
+      s.decompose(ret);
+      
     return 
-      if (ret.length == 0) Empty.inst;
+      if (ret.length == 0) Empty.make();
       else new CompoundStream(ret);
-  }
+  }      
+  
 }
