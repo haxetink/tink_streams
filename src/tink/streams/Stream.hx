@@ -42,6 +42,15 @@ abstract Stream<T>(StreamObject<T>) from StreamObject<T> to StreamObject<T> {
           Success(start);
       }));
     }); 
+  
+  public function collect():Surprise<Array<T>, Error> {
+    var ret = [];
+    return this.forEach(function(x) {
+      ret.push(x);
+      return true;
+    }) >>
+      function(_) return ret;
+  }
     
   @:op(a...b) static public function concat<A>(a:Stream<A>, b:Stream<A>):Stream<A> 
     return ConcatStream.make([a, b]);
