@@ -47,6 +47,6 @@ Iteration can concluded for various reasons which are thus expressed in the `Con
 - `Halted`: the handler stopped the iteration. The `rest` then represent the remaining stream. So if the handler returns ` `BackOff` the first item of the remaining stream will be the last item the handler treated, otherwise it's all the items that would have been passed to the handler, had it not stopped.
 - `Clogged`: the handler raised an `error` and `at` is the remaining stream (including the item where the error was raised)
 - `Failed`: the stream failed. Note that no remaining stream is given, because when streams fail, they end.
-= `Depleted`: the whole stream was used up. Therefore this case also has no remaining stream.
+- `Depleted`: the whole stream was used up. Therefore this case also has no remaining stream.
 
 If the stream is ideal (and thus `Quality` is not `Error`), then `Failed` is unexpected, if the handler is ideal (and thus `Safety` is not `Error`), then `Clogged` is unexpected.
