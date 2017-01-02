@@ -5,7 +5,7 @@
 
 This library provides immutable streams, which are vaguely similar to iterators but might more accurately be thought of as immutable asynchronous lazy lists. Progressing along a stream yields a new stream instead modifying the original. The data in a stream is generated *as needed*.
 
-Because the world is a harsh place, we must discern "real" streams from "ideal" streams, where the former may yield errors, while the latter will not. To deal with this distinction, `tink_streams` makes relatively strong use of [GADTs](), a hardly documented feature of Haxe. A small crash course can be found below.
+Because the world is a harsh place, we must discern "real" streams from "ideal" streams, where the former may yield errors, while the latter will not. To deal with this distinction, `tink_streams` makes relatively strong use of [GADTs](https://github.com/back2dos/code-cookbook/blob/master/assets/content/cookbook/Functional%20Programming/enum-gadt.md), a somewhat arcane feature of Haxe. 
 
 In a nutshell, the distinction is expressed like so:
   
