@@ -12,8 +12,8 @@
 	"contributors": [
 		"back2dos"
 	],
-	"releasenote": "Various improvements and better portability.",
-	"version": "0.1.0",
+	"releasenote": "Add collect, merge, mergeAsync",
+	"version": "0.2.0",
 	"url": "http://haxetink.org/tink_streams",
 	"dependencies": {
 		"tink_core": ""
