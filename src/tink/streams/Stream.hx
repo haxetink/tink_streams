@@ -92,7 +92,7 @@ enum Handled<Safety> {
   BackOff:Handled<Safety>;
   Finish:Handled<Safety>;
   Resume:Handled<Safety>;
-  Fail(e:Error):Handled<Error>;
+  Clog(e:Error):Handled<Error>;
 }
 
 enum Conclusion<Item, Safety, Quality> {
@@ -100,6 +100,17 @@ enum Conclusion<Item, Safety, Quality> {
   Clogged(error:Error, at:Stream<Item, Quality>):Conclusion<Item, Error, Quality>;
   Failed(error:Error):Conclusion<Item, Safety, Error>;
   Depleted:Conclusion<Item, Safety, Quality>;
+}
+
+enum ReductionStep<Safety, Result> {
+  Progress(result:Result):ReductionStep<Safety, Result>;
+  Crash(e:Error):ReductionStep<Error, Result>;
+}
+
+enum Reduction<Item, Safety, Quality, Result> {
+  Crashed(error:Error, at:Stream<Item, Quality>):Reduction<Item, Error, Quality, Result>;
+  Failed(error:Error):Reduction<Item, Safety, Error, Result>;  
+  Reduced(result:Result):Reduction<Item, Safety, Quality, Result>;
 }
 
 private class ErrorStream<Item> extends StreamBase<Item, Error> {
@@ -110,7 +121,7 @@ private class ErrorStream<Item> extends StreamBase<Item, Error> {
     this.error = error;
     
   override public function forEach<Safety>(handler:Handler<Item,Safety>):Future<Conclusion<Item, Safety, Error>>
-    return Future.sync(Failed(error));
+    return Future.sync(Conclusion.Failed(error));
   
 }
 
@@ -124,6 +135,7 @@ interface StreamObject<Item, Quality> {
   function prepend(other:Stream<Item, Quality>):Stream<Item, Quality>;
   function decompose(into:Array<Stream<Item, Quality>>):Void;
   function forEach<Safety>(handle:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>>;
+  function reduce<Safety, Result>(initial:Result, reducer:Reducer<Item, Safety, Result>):Future<Reduction<Item, Safety, Quality, Result>>;
 }
 
 class Empty<Item, Quality> extends StreamBase<Item, Quality> {
@@ -249,7 +261,23 @@ class StreamBase<Item, Quality> implements StreamObject<Item, Quality> {
     return 
       if (depleted) Empty.make();
       else new IdealizeStream(this, rescue);
-          
+
+  public function reduce<Safety, Result>(initial:Result, reducer:Reducer<Item, Safety, Result>):Future<Reduction<Item, Safety, Quality, Result>> 
+    return Future.async(function (cb:Reduction<Item, Safety, Quality, Result>->Void) {
+      forEach(function (item)
+        return reducer.apply(initial, item).map(
+          function (o):Handled<Safety> return switch o {
+            case Progress(v): initial = v; Resume;
+            case Crash(e): Clog(e);
+          })
+      ).handle(function (c) switch c {
+        case Failed(e): cb(Failed(e));
+        case Depleted: cb(Reduced(initial));
+        case Halted(_): throw "assert";
+        case Clogged(e, rest): cb(Crashed(e, rest));
+      });
+    }, true);
+
   public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> 
     return throw 'not implemented';
     
@@ -296,15 +324,17 @@ class Single<Item, Quality> extends StreamBase<Item, Quality> {
         Halted(this);
       case Finish | Resume:
         Depleted;
-      case Fail(e):
+      case Clog(e):
         Clogged(e, this);
     });
 }
 
-@:forward
 abstract Handler<Item, Safety>({ apply: Item->Future<Handled<Safety>> }) {
   inline function new(f) 
     this = { apply: f };
+
+  public inline function apply(item)
+    return this.apply(item);
     
   @:from static function ofSafeSync<Item>(f:Item->Handled<Noise>):Handler<Item, Noise>
     return new Handler(function (i) return Future.sync(f(i)));
@@ -320,7 +350,26 @@ abstract Handler<Item, Safety>({ apply: Item->Future<Handled<Safety>> }) {
     
 }
 
-typedef SyncHandler<Item, Safety> = Item->Handled<Safety>;
+abstract Reducer<Item, Safety, Result>({ apply: Result->Item->Future<ReductionStep<Safety, Result>> }) {
+  inline function new(f) 
+    this = { apply: f };
+
+  public inline function apply(res, item)
+    return this.apply(res, item);
+    
+  // @:from static function ofSafeSync<Item>(f:Item->Handled<Noise>):Handler<Item, Noise>
+  //   return new Handler(function (i) return Future.sync(f(i)));
+    
+  // @:from static function ofUnsafeSync<Item, Q>(f:Item->Handled<Q>):Handler<Item, Q>
+  //   return new Handler(function (i) return Future.sync(f(i)));
+    
+  // @:from static function ofSafe<Item>(f:Item->Future<Handled<Noise>>):Handler<Item, Noise>
+  //   return new Handler(f);
+    
+  // @:from static function ofUnsafe<Item, Q>(f:Item->Future<Handled<Q>>):Handler<Item, Q>
+  //   return new Handler(f);
+    
+}
 
 private class CompoundStream<Item, Quality> extends StreamBase<Item, Quality> {
   
@@ -420,7 +469,7 @@ class GeneratorStream<Item, Quality> extends StreamBase<Item, Quality> {
               
               function next(s:Handled<Safety>) switch s {
                 case Resume: progress(v.b);
-                case Fail(e): cb(Clogged(e, new GeneratorStream(cur)));
+                case Clog(e): cb(Clogged(e, new GeneratorStream(cur)));
                 case Finish: cb(Halted(new GeneratorStream(v.b)));
                 case BackOff: cb(Halted(new GeneratorStream(cur)));
               }
@@ -456,7 +505,7 @@ class Chained<Item, Quality> extends StreamBase<Item, Quality> {
               cb(Halted(then));
             case Resume:
               then.forEach(handler).handle(cb);
-            case Fail(e):
+            case Clog(e):
               cb(Clogged(e, this));
           });
         case ChainError(e):
