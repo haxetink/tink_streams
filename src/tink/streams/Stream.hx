@@ -339,15 +339,14 @@ abstract Handler<Item, Safety>({ apply: Item->Future<Handled<Safety>> }) {
   @:from static function ofSafeSync<Item>(f:Item->Handled<Noise>):Handler<Item, Noise>
     return new Handler(function (i) return Future.sync(f(i)));
     
-  @:from static function ofUnsafeSync<Item, Q>(f:Item->Handled<Q>):Handler<Item, Q>
+  @:from static function ofUnknownSync<Item, Q>(f:Item->Handled<Q>):Handler<Item, Q>
     return new Handler(function (i) return Future.sync(f(i)));
     
   @:from static function ofSafe<Item>(f:Item->Future<Handled<Noise>>):Handler<Item, Noise>
     return new Handler(f);
     
-  @:from static function ofUnsafe<Item, Q>(f:Item->Future<Handled<Q>>):Handler<Item, Q>
+  @:from static function ofUnknown<Item, Q>(f:Item->Future<Handled<Q>>):Handler<Item, Q>
     return new Handler(f);
-    
 }
 
 abstract Reducer<Item, Safety, Result>({ apply: Result->Item->Future<ReductionStep<Safety, Result>> }) {
@@ -357,17 +356,26 @@ abstract Reducer<Item, Safety, Result>({ apply: Result->Item->Future<ReductionSt
   public inline function apply(res, item)
     return this.apply(res, item);
     
-  // @:from static function ofSafeSync<Item>(f:Item->Handled<Noise>):Handler<Item, Noise>
-  //   return new Handler(function (i) return Future.sync(f(i)));
+  @:from static function ofSafeSync<Item, Result>(f:Result->Item->ReductionStep<Noise, Result>):Reducer<Item, Noise, Result>
+    return new Reducer(function (res, cur) return Future.sync(f(res, cur)));
     
-  // @:from static function ofUnsafeSync<Item, Q>(f:Item->Handled<Q>):Handler<Item, Q>
-  //   return new Handler(function (i) return Future.sync(f(i)));
+  @:from static function ofUnknownSync<Item, Q, Result>(f:Result->Item->ReductionStep<Q, Result>):Reducer<Item, Q, Result>
+    return new Reducer(function (res, cur) return Future.sync(f(res, cur)));
     
-  // @:from static function ofSafe<Item>(f:Item->Future<Handled<Noise>>):Handler<Item, Noise>
-  //   return new Handler(f);
+  @:from static function ofSafe<Item, Result>(f:Result->Item->Future<ReductionStep<Noise, Result>>):Reducer<Item, Noise, Result>
+    return new Reducer(f);
+
+  @:from static function ofPlainSync<Item, Result>(f:Result->Item->Result):Reducer<Item, Noise, Result>
+    return new Reducer(function (res, cur) return Future.sync(Progress(f(res, cur))));
     
-  // @:from static function ofUnsafe<Item, Q>(f:Item->Future<Handled<Q>>):Handler<Item, Q>
-  //   return new Handler(f);
+  @:from static function ofUnknown<Item, Q, Result>(f:Result->Item->Future<ReductionStep<Q, Result>>):Reducer<Item, Q, Result>
+    return new Reducer(f);
+
+  @:from static function ofPromiseBased<Item, Result>(f:Result->Item->Promise<Result>)
+    return new Reducer(function (res, cur) return f(res, cur).map(function (s) return switch s {
+      case Success(r): Progress(r);
+      case Failure(e): Crash(e);
+    }));
     
 }
 
