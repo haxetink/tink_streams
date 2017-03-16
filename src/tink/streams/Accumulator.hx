@@ -17,17 +17,19 @@ class Accumulator<T> extends StepWise<T> {
   
   override public function next():Future<StreamStep<T>> 
     return
-      if (end != null)
-        Future.sync(end);
-      else
-        switch buffered.shift() {
-          case null:
+      switch buffered.shift() {
+        case null:
+          if (end != null)
+            Future.sync(end);
+          else {
             var ret = Future.trigger();
             waiting.push(ret);
             ret;
-          case v:
-            Future.sync(v);
-        }
+          }
+        case v:
+          Future.sync(v);
+      }
+      
   #if php
   @:native('accumulate')
   #end
