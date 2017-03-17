@@ -5,7 +5,7 @@
 
 This library provides immutable streams, which are vaguely similar to iterators but might more accurately be thought of as immutable asynchronous lazy lists. Progressing along a stream yields a new stream instead modifying the original. The data in a stream is generated *as needed*.
 
-Because the world is a harsh place, we must discern "real" streams from "ideal" streams, where the former may yield errors, while the latter will not. To deal with this distinction, `tink_streams` makes relatively strong use of [GADTs](https://github.com/back2dos/code-cookbook/blob/master/assets/content/cookbook/Functional%20Programming/enum-gadt.md), a somewhat arcane feature of Haxe. 
+Because the world is a harsh place, we must discern "real" streams from "ideal" streams, where the former may yield errors, while the latter will not. To deal with this distinction, `tink_streams` makes relatively strong use of [GADTs](http://code.haxe.org/category/functional-programming/enum-gadt.html), a somewhat arcane feature of Haxe. 
 
 In a nutshell, the distinction is expressed like so:
   
@@ -42,7 +42,7 @@ Don't let this zoo of type parameters irritate you. They all have their place an
 
 There are many more functions defined on streams, but `forEach` is by far the most important one. As we see it accepts a handler for `Item` with a certain `Safety`. This is to allow us to differentiate ideal and real handlers (although we don't explicitly define them). A handler is a function that gets an item and then tells us how it has handled it. It can either `BackOff`, thus stopping iteration *before* that item, or `Finish` this stopping iteration *after* that item, it can `Resume` the iteration or - if it is a `Handler<Item, Error>` - it may `Fail`.
 
-Iteration can concluded for various reasons which are thus expressed in the `Conclusion` enum, which handles four cases:
+Iteration can be concluded for various reasons which are thus expressed in the `Conclusion` enum, which handles four cases:
   
 - `Halted`: the handler stopped the iteration. The `rest` then represent the remaining stream. So if the handler returns ` `BackOff` the first item of the remaining stream will be the last item the handler treated, otherwise it's all the items that would have been passed to the handler, had it not stopped.
 - `Clogged`: the handler raised an `error` and `at` is the remaining stream (including the item where the error was raised)
