@@ -119,9 +119,9 @@ private class RegroupStream<In, Out, Quality> extends StreamBase<Out, Quality> {
       return switch c {
         case Depleted:
           if (error == null) handleRemaining(End, Depleted);
-          else handleRemaining(cast RegroupStatus.Errored(error), cast Failed(error));
+          else handleRemaining(cast RegroupStatus.Errored(error), cast Conclusion.Failed(error));
         case Failed(e): 
-          handleRemaining(cast RegroupStatus.Errored(error), cast Failed(error));
+          handleRemaining(cast RegroupStatus.Errored(e), cast Conclusion.Failed(e));
         case Clogged(e, at): Future.sync(Clogged(e, new RegroupStream(at, f, buf)));
         case Halted(rest): Future.sync(Halted(new RegroupStream(rest, f, buf)));
       }
