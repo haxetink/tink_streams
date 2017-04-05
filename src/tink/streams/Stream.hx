@@ -16,21 +16,10 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     
   static public function single<Item, Quality>(i:Item):Stream<Item, Quality>
     return new Single(i);
-    
-  static function generateSync<Item, Quality>(f:Void->Option<Item>)
-    return new GeneratorStream(function poll() {
-      return switch f() {
-        case None: null;
-        case Some(v): new Pair<Item, Generator<Item>>(v, poll);
-      }
-    });
       
-  @:from static public function ofIterator<Item, Quality>(i:Iterator<Item>):Stream<Item, Quality> 
-    return new GeneratorStream(function poll():Null<Pair<Item, Generator<Item>>> {
-      return 
-        if (i.hasNext()) new Pair<Item, Generator<Item>>(i.next(), poll);
-        else null;
-    });
+  @:from static public function ofIterator<Item, Quality>(i:Iterator<Item>):Stream<Item, Quality> {
+    return Chained.stream(function next(step) step(if(i.hasNext()) ChainLink(i.next(), Chained.stream(next)) else ChainEnd));
+  }
     
   @:from static public function flatten<Item, Quality>(f:Future<Stream<Item, Quality>>):Stream<Item, Quality>
     return new FutureStream(f);
@@ -449,51 +438,6 @@ private class FutureStream<Item, Quality> extends StreamBase<Item, Quality> {
       f.handle(function (s) s.forEach(handler).handle(cb));
     });
   }
-}
-
-private typedef Generator<T> = Lazy<Null<Pair<T, Generator<T>>>>;
-
-class GeneratorStream<Item, Quality> extends StreamBase<Item, Quality> {
-  
-  var g:Generator<Item>;
-  
-  public function new(g)
-    this.g = g;
-    
-  override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> 
-    return Future.async(function (cb:Conclusion<Item, Safety, Quality>->Void) {
-      function progress(cur:Generator<Item>) {
-        var run = true;
-        while (run) {
-          run = false;
-          switch cur.get() {
-            case null: cb(Depleted);
-            case v: 
-              var val = None;
-              
-              var step = handler.apply(v.a);
-              
-              step.handle(function (x) val = Some(x)).dissolve();
-              
-              function next(s:Handled<Safety>) switch s {
-                case Resume: progress(v.b);
-                case Clog(e): cb(Clogged(e, new GeneratorStream(cur)));
-                case Finish: cb(Halted(new GeneratorStream(v.b)));
-                case BackOff: cb(Halted(new GeneratorStream(cur)));
-              }
-              
-              switch val {
-                case Some(Resume): 
-                  cur = v.b;
-                  run = true;
-                case Some(v): next(v);
-                case None: step.handle(next);
-              }
-          }
-        }
-      }
-      progress(g);
-    });
 }
 
 class Chained<Item, Quality> extends StreamBase<Item, Quality> {
