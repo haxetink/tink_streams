@@ -6,6 +6,7 @@ using tink.CoreApi;
 class Accumulator<Item, Quality> extends Generator<Item, Quality> {
 	
 	var buffer:Array<FutureTrigger<Step<Item, Quality>>>;
+	var ended = false;
 	
 	public function new() {
 		buffer = [Future.trigger()];
@@ -16,15 +17,17 @@ class Accumulator<Item, Quality> extends Generator<Item, Quality> {
 	@:native('accumulate')
 	#end
 	public function yield(product:Yield<Item, Quality>) {
-		var last = buffer[buffer.length - 1];
-		last.trigger(switch product {
+		if(ended) return;
+		buffer[buffer.length - 1].trigger(switch product {
 			case Data(data):
 				var next = Future.trigger();
 				buffer.push(next);
 				Link(data, new Generator(next));
 			case Fail(e):
+				ended = true;
 				Fail(e);
 			case End:
+				ended = true;
 				End;
 		});
 	}
