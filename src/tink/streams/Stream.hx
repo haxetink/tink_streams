@@ -18,7 +18,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     return new Single(i);
       
   @:from static public function ofIterator<Item, Quality>(i:Iterator<Item>):Stream<Item, Quality> {
-    return Chained.stream(function next(step) step(if(i.hasNext()) ChainLink(i.next(), Chained.stream(next)) else ChainEnd));
+    return Generator.stream(function next(step) step(if(i.hasNext()) Link(i.next(), Generator.stream(next)) else End));
   }
     
   @:from static public function flatten<Item, Quality>(f:Future<Stream<Item, Quality>>):Stream<Item, Quality>
@@ -440,8 +440,8 @@ private class FutureStream<Item, Quality> extends StreamBase<Item, Quality> {
   }
 }
 
-class Chained<Item, Quality> extends StreamBase<Item, Quality> {
-  var next:Future<Chain<Item, Quality>>;
+class Generator<Item, Quality> extends StreamBase<Item, Quality> {
+  var next:Future<Step<Item, Quality>>;
   
   function new(next) 
     this.next = next;
@@ -449,7 +449,7 @@ class Chained<Item, Quality> extends StreamBase<Item, Quality> {
   override public function forEach<Safety>(handler:Handler<Item, Safety>)
     return Future.async(function (cb:Conclusion<Item, Safety, Quality>->Void) 
       next.handle(function (e) switch e {
-        case ChainLink(v, then):
+        case Link(v, then):
           handler.apply(v).handle(function (s) switch s {
             case BackOff:
               cb(Halted(this));
@@ -460,22 +460,22 @@ class Chained<Item, Quality> extends StreamBase<Item, Quality> {
             case Clog(e):
               cb(Clogged(e, this));
           });
-        case ChainError(e):
+        case Fail(e):
           cb(Failed(e));
-        case ChainEnd:
+        case End:
           cb(Depleted);
       }),
   true
     );
   
-  static public function stream<I, Q>(step:(Chain<I, Q>->Void)->Void) {
-    return new Chained(Future.async(step, true));
+  static public function stream<I, Q>(step:(Step<I, Q>->Void)->Void) {
+    return new Generator(Future.async(step, true));
   }
     
 }
 
-enum Chain<Item, Quality> {
-  ChainLink(value:Item, next:Stream<Item, Quality>):Chain<Item, Quality>;
-  ChainError(e:Error):Chain<Item, Error>;
-  ChainEnd:Chain<Item, Quality>;
+enum Step<Item, Quality> {
+  Link(value:Item, next:Stream<Item, Quality>):Step<Item, Quality>;
+  Fail(e:Error):Step<Item, Error>;
+  End:Step<Item, Quality>;
 }

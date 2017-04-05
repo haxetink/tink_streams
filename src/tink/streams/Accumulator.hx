@@ -3,9 +3,9 @@ package tink.streams;
 import tink.streams.Stream;
 using tink.CoreApi;
 
-class Accumulator<Item, Quality> extends Chained<Item, Quality> {
+class Accumulator<Item, Quality> extends Generator<Item, Quality> {
 	
-	var buffer:Array<FutureTrigger<Chain<Item, Quality>>>;
+	var buffer:Array<FutureTrigger<Step<Item, Quality>>>;
 	
 	public function new() {
 		buffer = [Future.trigger()];
@@ -15,23 +15,23 @@ class Accumulator<Item, Quality> extends Chained<Item, Quality> {
 	#if php
 	@:native('accumulate')
 	#end
-	public function yield(step:AccumulatorStep<Item, Quality>) {
+	public function yield(product:Yield<Item, Quality>) {
 		var last = buffer[buffer.length - 1];
-		last.trigger(switch step {
+		last.trigger(switch product {
 			case Data(data):
 				var next = Future.trigger();
 				buffer.push(next);
-				ChainLink(data, new Chained(next));
+				Link(data, new Generator(next));
 			case Fail(e):
-				ChainError(e);
+				Fail(e);
 			case End:
-				ChainEnd;
+				End;
 		});
 	}
 }
 
-enum AccumulatorStep<Item, Quality> {
-	Data(data:Item):AccumulatorStep<Item, Quality>;
-	Fail(e:Error):AccumulatorStep<Item, Error>;
-	End:AccumulatorStep<Item, Quality>;
+enum Yield<Item, Quality> {
+	Data(data:Item):Yield<Item, Quality>;
+	Fail(e:Error):Yield<Item, Error>;
+	End:Yield<Item, Quality>;
 }
