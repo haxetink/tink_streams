@@ -106,7 +106,11 @@ private class RegroupStream<In, Out, Quality> extends StreamBase<Out, Quality> {
           if(buf.length > 0)
             f.apply(buf, status).flatMap(function(o) return switch o {
               case Converted(v):
-                handler.apply(v).map(function(_) return conclusion);
+                handler.apply(v).map(function(o):Conclusion<Out, Safety, Quality> return switch o {
+                  case Finish | Resume: conclusion;
+                  case BackOff: Halted(new RegroupStream(Stream.single(buf.pop()), f, buf));
+                  case Clog(e): Clogged(error, new RegroupStream(Stream.single(buf.pop()), f, buf));
+                });
               case Swallowed | Untouched:
                 Future.sync(conclusion);
               case Errored(e):

@@ -62,7 +62,7 @@ class StreamTest extends TestCase {
     s.regroup(function (i:Array<Int>) return i.length == 5 ? Converted(i[0] + i[4]) : Untouched)
       .idealize(null).forEach(function (v) {
         sum += v;
-        return Future.sync(Resume);
+        return Resume;
       })
       .handle(function (x) switch x {
         case Depleted:
@@ -76,11 +76,11 @@ class StreamTest extends TestCase {
       return if(s == Normal)
         i.length == 3 ? Converted(i[0] + i[2]) : Untouched
       else
-        Converted(i[0]);
+        Converted(i[0]); // TODO: test backoff / clog at last step
     })
       .idealize(null).forEach(function (v) {
         sum += v;
-        return Future.sync(Resume);
+        return Resume;
       })
       .handle(function (x) switch x {
         case Depleted:
