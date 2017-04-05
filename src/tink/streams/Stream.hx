@@ -41,31 +41,31 @@ enum RegroupStatus<Quality> {
   Ended:RegroupStatus<Quality>;
 }
 
-enum RegroupResult<In, Out, Quality> {
-  Converted(data:Out):RegroupResult<In, Out, Quality>;
-  Swallowed:RegroupResult<In, Out, Quality>;
-  Untouched:RegroupResult<In, Out, Quality>;
-  Errored(e:Error):RegroupResult<In, Out, Error>;
+enum RegroupResult<Out, Quality> {
+  Converted(data:Out):RegroupResult<Out, Quality>;
+  Swallowed:RegroupResult<Out, Quality>;
+  Untouched:RegroupResult<Out, Quality>;
+  Errored(e:Error):RegroupResult<Out, Error>;
 }
 
 @:forward
 abstract Regrouper<In, Out, Quality>(RegrouperBase<In, Out, Quality>) from RegrouperBase<In, Out, Quality> to RegrouperBase<In, Out, Quality> {
   @:from
-  public static function ofIgnorance<In, Out, Quality>(f:Array<In>->Future<RegroupResult<In, Out, Quality>>):Regrouper<In, Out, Quality>
+  public static function ofIgnorance<In, Out, Quality>(f:Array<In>->Future<RegroupResult<Out, Quality>>):Regrouper<In, Out, Quality>
     return {apply: function(i, _) return f(i)};
   @:from
-  public static function ofIgnoranceSync<In, Out, Quality>(f:Array<In>->RegroupResult<In, Out, Quality>):Regrouper<In, Out, Quality>
+  public static function ofIgnoranceSync<In, Out, Quality>(f:Array<In>->RegroupResult<Out, Quality>):Regrouper<In, Out, Quality>
     return {apply: function(i, _) return Future.sync(f(i))};
   @:from
-  public static function ofFunc<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->Future<RegroupResult<In, Out, Quality>>):Regrouper<In, Out, Quality>
+  public static function ofFunc<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->Future<RegroupResult<Out, Quality>>):Regrouper<In, Out, Quality>
     return {apply: f};
   @:from
-  public static function ofFuncSync<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->RegroupResult<In, Out, Quality>):Regrouper<In, Out, Quality>
+  public static function ofFuncSync<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->RegroupResult<Out, Quality>):Regrouper<In, Out, Quality>
     return {apply: function(i, s) return Future.sync(f(i, s))};
 }
 
 private typedef RegrouperBase<In, Out, Quality> = {
-  function apply(input:Array<In>, status:RegroupStatus<Quality>):Future<RegroupResult<In, Out, Quality>>;
+  function apply(input:Array<In>, status:RegroupStatus<Quality>):Future<RegroupResult<Out, Quality>>;
 }
 
 private class RegroupStream<In, Out, Quality> extends StreamBase<Out, Quality> {
