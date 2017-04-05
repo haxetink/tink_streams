@@ -36,9 +36,9 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
 }
 
 enum RegroupStatus<Quality> {
-  Normal:RegroupStatus<Quality>;
+  Flowing:RegroupStatus<Quality>;
   Errored(e:Error):RegroupStatus<Error>;
-  End:RegroupStatus<Quality>;
+  Ended:RegroupStatus<Quality>;
 }
 
 enum RegroupResult<In, Out, Quality> {
@@ -87,7 +87,7 @@ private class RegroupStream<In, Out, Quality> extends StreamBase<Out, Quality> {
     var error:Error = null;
     return source.forEach(function (item) {
       buf.push(item);
-      return f.apply(buf, Normal).flatMap(function (o):Future<Handled<Safety>> return switch o {
+      return f.apply(buf, Flowing).flatMap(function (o):Future<Handled<Safety>> return switch o {
         case Converted(v):
           reset();
           handler.apply(v);
@@ -122,7 +122,7 @@ private class RegroupStream<In, Out, Quality> extends StreamBase<Out, Quality> {
           
       return switch c {
         case Depleted:
-          if (error == null) handleRemaining(End, Depleted);
+          if (error == null) handleRemaining(Ended, Depleted);
           else handleRemaining(cast RegroupStatus.Errored(error), cast Conclusion.Failed(error));
         case Failed(e): 
           handleRemaining(cast RegroupStatus.Errored(e), cast Conclusion.Failed(e));

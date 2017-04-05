@@ -73,7 +73,7 @@ class StreamTest extends TestCase {
       
     var sum = 0;
     s.regroup(function (i:Array<Int>, s) {
-      return if(s == Normal)
+      return if(s == Flowing)
         i.length == 3 ? Converted(i[0] + i[2]) : Untouched
       else
         Converted(i[0]); // TODO: test backoff / clog at last step
