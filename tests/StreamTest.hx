@@ -53,4 +53,43 @@ class StreamTest extends TestCase {
     });
     
   }
+    
+  function testRegroup() {
+    
+    var s = Stream.ofIterator(0...100);
+    
+    var sum = 0;
+    s.regroup(function (i:Array<Int>) return i.length == 5 ? Converted(i[0] + i[4]) : Untouched)
+      .idealize(null).forEach(function (v) {
+        sum += v;
+        return Future.sync(Resume);
+      })
+      .handle(function (x) switch x {
+        case Depleted:
+          assertEquals(1980, sum);
+        case Halted(_):
+          assertTrue(false);
+      });
+      
+    var sum = 0;
+    s.regroup(function (i:Array<Int>, s) {
+      trace(s);
+      return if(s == Normal)
+        i.length == 3 ? Converted(i[0] + i[2]) : Untouched
+      else
+        Converted(i[0]);
+    })
+      .idealize(null).forEach(function (v) {
+        sum += v;
+        trace(v);
+        return Future.sync(Resume);
+      })
+      .handle(function (x) switch x {
+        case Depleted:
+          assertEquals(3333, sum);
+        case Halted(_):
+          assertTrue(false);
+      });
+    
+  }
 }

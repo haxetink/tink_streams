@@ -48,7 +48,23 @@ enum RegroupResult<In, Out, Quality> {
   Errored(e:Error):RegroupResult<In, Out, Error>;
 }
 
-private typedef Regrouper<In, Out, Quality> = {
+@:forward
+abstract Regrouper<In, Out, Quality>(RegrouperBase<In, Out, Quality>) from RegrouperBase<In, Out, Quality> to RegrouperBase<In, Out, Quality> {
+  @:from
+  public static function ofIgnorance<In, Out, Quality>(f:Array<In>->Future<RegroupResult<In, Out, Quality>>):Regrouper<In, Out, Quality>
+    return {apply: function(i, _) return f(i)};
+  @:from
+  public static function ofIgnoranceSync<In, Out, Quality>(f:Array<In>->RegroupResult<In, Out, Quality>):Regrouper<In, Out, Quality>
+    return {apply: function(i, _) return Future.sync(f(i))};
+  @:from
+  public static function ofFunc<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->Future<RegroupResult<In, Out, Quality>>):Regrouper<In, Out, Quality>
+    return {apply: f};
+  @:from
+  public static function ofFuncSync<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->RegroupResult<In, Out, Quality>):Regrouper<In, Out, Quality>
+    return {apply: function(i, s) return Future.sync(f(i, s))};
+}
+
+private typedef RegrouperBase<In, Out, Quality> = {
   function apply(input:Array<In>, status:RegroupStatus<Quality>):Future<RegroupResult<In, Out, Quality>>;
 }
 
@@ -85,19 +101,27 @@ private class RegroupStream<In, Out, Quality> extends StreamBase<Out, Quality> {
           Future.sync(Finish);
       });
     }).flatMap(function (c):Future<Conclusion<Out, Safety, Quality>> {
-      function handleError() {
-        var conclusion:Conclusion<Out, Safety, Quality> = cast Failed(error);
-        return if(buf.length > 0)
-          f.apply(buf, cast RegroupStatus.Errored(error)).map(function(_) return conclusion);
-          else Future.sync(conclusion);
+      function handleRemaining(status:RegroupStatus<Quality>, conclusion:Conclusion<Out, Safety, Quality>) {
+        return
+          if(buf.length > 0)
+            f.apply(buf, status).flatMap(function(o) return switch o {
+              case Converted(v):
+                handler.apply(v).map(function(_) return conclusion);
+              case Swallowed | Untouched:
+                Future.sync(conclusion);
+              case Errored(e):
+                Future.sync(cast Failed(error));
+            });
+          else
+            Future.sync(conclusion);
       }
           
       return switch c {
         case Depleted:
-          if (error == null) Future.sync(Depleted);
-          else handleError();
+          if (error == null) handleRemaining(End, Depleted);
+          else handleRemaining(cast RegroupStatus.Errored(error), cast Failed(error));
         case Failed(e): 
-          handleError();
+          handleRemaining(cast RegroupStatus.Errored(error), cast Failed(error));
         case Clogged(e, at): Future.sync(Clogged(e, new RegroupStream(at, f, buf)));
         case Halted(rest): Future.sync(Halted(new RegroupStream(rest, f, buf)));
       }
