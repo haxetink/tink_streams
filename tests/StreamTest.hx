@@ -73,7 +73,6 @@ class StreamTest extends TestCase {
       
     var sum = 0;
     s.regroup(function (i:Array<Int>, s) {
-      trace(s);
       return if(s == Normal)
         i.length == 3 ? Converted(i[0] + i[2]) : Untouched
       else
@@ -81,7 +80,6 @@ class StreamTest extends TestCase {
     })
       .idealize(null).forEach(function (v) {
         sum += v;
-        trace(v);
         return Future.sync(Resume);
       })
       .handle(function (x) switch x {
