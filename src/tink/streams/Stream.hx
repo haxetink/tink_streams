@@ -488,7 +488,7 @@ private class CompoundStream<Item, Quality> extends StreamBase<Item, Quality> {
   
 }
 
-private class FutureStream<Item, Quality> extends StreamBase<Item, Quality> {
+class FutureStream<Item, Quality> extends StreamBase<Item, Quality> {
   var f:Future<Stream<Item, Quality>>;
   public function new(f)
     this.f = f;
