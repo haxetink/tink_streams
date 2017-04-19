@@ -9,6 +9,10 @@ class RunTests {
 
   static function main() {
     
+    #if python
+    (cast python.lib.Sys).setrecursionlimit(9999);
+    #end
+    
     var t = new TestRunner();
     t.add(new StreamTest());
     t.add(new AccumulatorTest());
