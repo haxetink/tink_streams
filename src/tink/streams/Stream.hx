@@ -371,7 +371,9 @@ class Single<Item, Quality> extends StreamBase<Item, Quality> {
     return handle.apply(value).map(function (step):Conclusion<Item, Safety, Quality> return switch step {
       case BackOff:
         Halted(this);
-      case Finish | Resume:
+      case Finish:
+        Halted(Empty.make());
+      case Resume:
         Depleted;
       case Clog(e):
         Clogged(e, this);
