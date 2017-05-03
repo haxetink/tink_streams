@@ -436,6 +436,13 @@ private class CompoundStream<Item, Quality> extends StreamBase<Item, Quality> {
   
   function new(parts)
     this.parts = parts;
+    
+  override function get_depleted()
+    return switch parts {
+      case []: true;
+      case [s]: s.depleted;
+      default: false;
+    }
   
   override public function decompose(into:Array<Stream<Item, Quality>>):Void 
     for (p in parts)
