@@ -59,7 +59,7 @@ class StreamTest extends TestCase {
     var s = Stream.ofIterator(0...100);
     
     var sum = 0;
-    s.regroup(function (i:Array<Int>) return i.length == 5 ? Converted(i[0] + i[4]) : Untouched)
+    s.regroup(function (i:Array<Int>) return i.length == 5 ? Converted(Stream.single(i[0] + i[4])) : Untouched)
       .idealize(null).forEach(function (v) {
         sum += v;
         return Resume;
@@ -74,9 +74,9 @@ class StreamTest extends TestCase {
     var sum = 0;
     s.regroup(function (i:Array<Int>, s) {
       return if(s == Flowing)
-        i.length == 3 ? Converted(i[0] + i[2]) : Untouched
+        i.length == 3 ? Converted(Stream.single(i[0] + i[2])) : Untouched
       else
-        Converted(i[0]); // TODO: test backoff / clog at last step
+        Converted(Stream.single(i[0])); // TODO: test backoff / clog at last step
     })
       .idealize(null).forEach(function (v) {
         sum += v;
@@ -85,6 +85,19 @@ class StreamTest extends TestCase {
       .handle(function (x) switch x {
         case Depleted:
           assertEquals(3333, sum);
+        case Halted(_):
+          assertTrue(false);
+      });
+      
+    var sum = 0;
+    s.regroup(function (i:Array<Int>) return Converted([i[0], i[0]].iterator()))
+      .idealize(null).forEach(function (v) {
+        sum += v;
+        return Resume;
+      })
+      .handle(function (x) switch x {
+        case Depleted:
+          assertEquals(9900, sum);
         case Halted(_):
           assertTrue(false);
       });

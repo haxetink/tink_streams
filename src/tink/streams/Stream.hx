@@ -42,8 +42,7 @@ enum RegroupStatus<Quality> {
 }
 
 enum RegroupResult<Out, Quality> {
-  Converted(data:Out):RegroupResult<Out, Quality>;
-  Swallowed:RegroupResult<Out, Quality>;
+  Converted(data:Stream<Out, Quality>):RegroupResult<Out, Quality>;
   Untouched:RegroupResult<Out, Quality>;
   Errored(e:Error):RegroupResult<Out, Error>;
 }
@@ -68,68 +67,63 @@ private typedef RegrouperBase<In, Out, Quality> = {
   function apply(input:Array<In>, status:RegroupStatus<Quality>):Future<RegroupResult<Out, Quality>>;
 }
 
-private class RegroupStream<In, Out, Quality> extends StreamBase<Out, Quality> {
+private class TailedStream<Item, Quality> extends StreamBase<Item, Quality> {
   
-  var source:Stream<In, Quality>;
-  var buf:Array<In>;
-  var f:Regrouper<In, Out, Quality>;
+  var head:Stream<Item, Quality>;
+  var tail:Lazy<Stream<Item, Quality>>;
   
-  public function new(source, f, ?buf) {
-    this.source = source;
-    this.buf = buf == null ? [] : buf;
-    this.f = f;
+  public function new(head, tail) {
+    this.head = head;
+    this.tail = tail;
   }
   
-  inline function reset()
-    buf = []; // TODO: use fastest way per platform
-  
-  override public function forEach<Safety>(handler:Handler<Out, Safety>):Future<Conclusion<Out, Safety, Quality>> {
-    var error:Error = null;
-    return source.forEach(function (item) {
-      buf.push(item);
-      return f.apply(buf, Flowing).flatMap(function (o):Future<Handled<Safety>> return switch o {
-        case Converted(v):
-          reset();
-          handler.apply(v);
-        case Swallowed:
-          reset();
-          Future.sync(Resume);
-        case Untouched:
-          Future.sync(Resume);
-        case Errored(e):
-          error = e;
-          Future.sync(Finish);
-      });
-    }).flatMap(function (c):Future<Conclusion<Out, Safety, Quality>> {
-      function handleRemaining(status:RegroupStatus<Quality>, conclusion:Conclusion<Out, Safety, Quality>) {
-        return
-          if(buf.length > 0)
-            f.apply(buf, status).flatMap(function(o) return switch o {
-              case Converted(v):
-                handler.apply(v).map(function(o):Conclusion<Out, Safety, Quality> return switch o {
-                  case Finish | Resume: conclusion;
-                  case BackOff: Halted(new RegroupStream(Stream.single(buf.pop()), f, buf));
-                  case Clog(e): Clogged(error, new RegroupStream(Stream.single(buf.pop()), f, buf));
-                });
-              case Swallowed | Untouched:
-                Future.sync(conclusion);
-              case Errored(e):
-                Future.sync(cast Failed(error));
-            });
-          else
-            Future.sync(conclusion);
-      }
-          
-      return switch c {
-        case Depleted:
-          if (error == null) handleRemaining(Ended, Depleted);
-          else handleRemaining(cast RegroupStatus.Errored(error), cast Conclusion.Failed(error));
-        case Failed(e): 
-          handleRemaining(cast RegroupStatus.Errored(e), cast Conclusion.Failed(e));
-        case Clogged(e, at): Future.sync(Clogged(e, new RegroupStream(at, f, buf)));
-        case Halted(rest): Future.sync(Halted(new RegroupStream(rest, f, buf)));
-      }
+  override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> {
+    return head.forEach(handler).flatMap(function(o) return switch o {
+      case Depleted: tail.get().forEach(handler);
+      case Halted(rest): Future.sync(Halted(new TailedStream(rest, tail)));
+      case Clogged(e, rest): Future.sync(Clogged(e, new TailedStream(rest, tail)));
+      case Failed(e): Future.sync(o);
     });
+  }
+}
+
+private class RegroupStream<In, Out, Quality> extends TailedStream<Out, Quality> {
+  
+  var source:Stream<In, Quality>;
+  var f:Regrouper<In, Out, Quality>;
+  
+  public function new(source, f, ?prev) {
+    this.source = source;
+    this.f = f;
+    super(prev == null ? Empty.make() : prev, getTail);
+  }
+  
+  function getTail():Stream<Out, Quality> {
+    var ret = null;
+    var buf = [];
+    return Stream.flatten(source.forEach(function(item) {
+      buf.push(item);
+      return f.apply(buf, Flowing).map(function (o):Handled<Error> return switch o {
+        case Converted(v):
+          ret = v;
+          Finish;
+        case Untouched:
+          Resume;
+        case Errored(e):
+          Clog(e);
+      });
+    }).map(function(o):Stream<Out, Quality> return switch o {
+      case Failed(e): Stream.ofError(e);
+      case Depleted if(buf.length == 0): Empty.make();
+      case Depleted:
+        Stream.flatten(f.apply(buf, Ended).map(function(o) return switch o {
+          case Converted(v): v;
+          case Untouched: Empty.make();
+          case Errored(e): cast Stream.ofError(e);
+        }));
+      case Halted(rest): new RegroupStream(rest, f, ret);
+      case Clogged(e, rest): cast new CloggedStream(e, cast rest);
+    }));
   }
 }
 
@@ -156,6 +150,21 @@ enum Reduction<Item, Safety, Quality, Result> {
   Crashed(error:Error, at:Stream<Item, Quality>):Reduction<Item, Error, Quality, Result>;
   Failed(error:Error):Reduction<Item, Safety, Error, Result>;  
   Reduced(result:Result):Reduction<Item, Safety, Quality, Result>;
+}
+
+private class CloggedStream<Item> extends StreamBase<Item, Error> {
+  
+  var rest:Stream<Item, Error>;
+  var error:Error;
+  
+  public function new(rest, error) {
+    this.rest = rest;
+    this.error = error;
+  }
+    
+  override public function forEach<Safety>(handler:Handler<Item,Safety>):Future<Conclusion<Item, Safety, Error>>
+    return Future.sync(cast Conclusion.Clogged(error, rest));
+  
 }
 
 private class ErrorStream<Item> extends StreamBase<Item, Error> {
@@ -208,25 +217,25 @@ abstract Mapping<In, Out, Quality>(Regrouper<In, Out, Quality>) to Regrouper<In,
     
   @:from static function ofNext<In, Out>(n:Next<In, Out>):Mapping<In, Out, Error>
     return new Mapping({
-      apply: function (i:Array<In>, _) return n(i[0]).next(Converted).recover(Errored),
+      apply: function (i:Array<In>, _) return n(i[0]).next(function(o) return Converted(Stream.single(o))).recover(Errored),
     });
     
   @:from static function ofAsync<In, Out, Quality>(f:In->Future<Out>):Mapping<In, Out, Quality>
     return new Mapping({
-      apply: function (i:Array<In>, _) return f(i[0]).map(Converted),
+      apply: function (i:Array<In>, _) return f(i[0]).map(function(o) return Converted(Stream.single(o))),
     });
     
   @:from static function ofSync<In, Out>(f:In->Outcome<Out, Error>):Mapping<In, Out, Error>
     return new Mapping({
       apply: function (i:Array<In>, _) return Future.sync(switch f(i[0]) {
-        case Success(v): Converted(v);
+        case Success(v): Converted(Stream.single(v));
         case Failure(e): Errored(e);
       }),
     });
     
   @:from static function ofPlain<In, Out, Quality>(f:In->Out):Mapping<In, Out, Quality>
     return new Mapping({
-      apply: function (i:Array<In>, _) return Future.sync(Converted(f(i[0]))),
+      apply: function (i:Array<In>, _) return Future.sync(Converted(Stream.single(f(i[0])))),
     });
     
 }
@@ -238,26 +247,25 @@ abstract Filter<T, Quality>(Regrouper<T, T, Quality>) to Regrouper<T, T, Quality
   
   @:from static function ofNext<T>(n:Next<T, Bool>):Filter<T, Error>
     return new Filter({
-      apply: function (i:Array<T>, _) return n(i[0]).next(function (matched) return if (matched) Converted(i[0]) else Swallowed).recover(Errored),
+      apply: function (i:Array<T>, _) return n(i[0]).next(function (matched) return Converted(if (matched) Stream.single(i[0]) else Empty.make())).recover(Errored),
     });
     
   @:from static function ofAsync<T, Quality>(f:T->Future<Bool>):Filter<T, Quality>
     return new Filter({
-      apply: function (i:Array<T>, _) return f(i[0]).map(function (matched) return if (matched) Converted(i[0]) else Swallowed),
+      apply: function (i:Array<T>, _) return f(i[0]).map(function (matched) return Converted(if (matched) Stream.single(i[0]) else Empty.make())),
     });
     
   @:from static function ofSync<T>(f:T->Outcome<Bool, Error>):Filter<T, Error>
     return new Filter({
       apply: function (i:Array<T>, _) return Future.sync(switch f(i[0]) {
-        case Success(true): Converted(i[0]);
-        case Success(false): Swallowed;
+        case Success(v): Converted(if(v)Stream.single(i[0]) else Empty.make());
         case Failure(e): Errored(e);
       }),
     });
     
   @:from static function ofPlain<T, Quality>(f:T->Bool):Filter<T, Quality>
     return new Filter({
-      apply: function (i:Array<T>, _) return Future.sync(if (f(i[0])) Converted(i[0]) else Swallowed),
+      apply: function (i:Array<T>, _) return Future.sync(Converted(if (f(i[0])) Stream.single(i[0]) else Empty.make())),
     });
   
 }
