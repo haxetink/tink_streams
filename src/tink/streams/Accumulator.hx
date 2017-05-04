@@ -3,33 +3,29 @@ package tink.streams;
 import tink.streams.Stream;
 using tink.CoreApi;
 
-class Accumulator<Item, Quality> extends Generator<Item, Quality> {
+class Accumulator<Item, Quality> extends SignalStream<Item, Quality> {
 	
-	var buffer:Array<FutureTrigger<Step<Item, Quality>>>;
-	var ended = false;
+	var trigger:SignalTrigger<Yield<Item, Quality>>;
 	
 	public function new() {
-		buffer = [Future.trigger()];
-		super(buffer[0]);
+		trigger = Signal.trigger();
+		super(trigger.asSignal());
 	}
 	
 	#if php
 	@:native('accumulate')
 	#end
-	public function yield(product:Yield<Item, Quality>) {
-		if(ended) return;
-		buffer[buffer.length - 1].trigger(switch product {
-			case Data(data):
-				var next = Future.trigger();
-				buffer.push(next);
-				Link(data, new Generator(next));
-			case Fail(e):
-				ended = true;
-				Fail(e);
-			case End:
-				ended = true;
-				End;
-		});
+	public inline function yield(product:Yield<Item, Quality>)
+		trigger.trigger(product);
+}
+
+class SignalStream<Item, Quality> extends Generator<Item, Quality> {
+	public function new(signal:Signal<Yield<Item, Quality>>) {
+		super(signal.next().map(function(o):Step<Item, Quality> return switch o {
+			case Data(data): Link(data, new SignalStream(signal));
+			case Fail(e): Fail(e);
+			case End: End;
+		}));
 	}
 }
 

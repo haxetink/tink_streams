@@ -125,6 +125,7 @@ private class RegroupStream<In, Out, Quality> extends TailedStream<Out, Quality>
       case Clogged(e, rest): cast new CloggedStream(e, cast rest);
     }));
   }
+  // TODO: get rid of those casts in this function
 }
 
 enum Handled<Safety> {
