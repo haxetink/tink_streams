@@ -3,20 +3,21 @@ package tink.streams;
 import tink.streams.Stream;
 using tink.CoreApi;
 
+@:forward(trigger)
+abstract AccumulatorTrigger<Item, Quality>(SignalTrigger<Yield<Item, Quality>>) from SignalTrigger<Yield<Item, Quality>> to SignalTrigger<Yield<Item, Quality>> {
+	public inline function new()
+		this = Signal.trigger();
+		
+	@:to
+	public inline function asStream():Stream<Item, Quality>
+		return new SignalStream(this.asSignal());
+}
+
 class Accumulator<Item, Quality> extends SignalStream<Item, Quality> {
 	
-	var trigger:SignalTrigger<Yield<Item, Quality>>;
+	public static inline function trigger<Item, Quality>():AccumulatorTrigger<Item, Quality>
+		return new AccumulatorTrigger();
 	
-	public function new() {
-		trigger = Signal.trigger();
-		super(trigger.asSignal());
-	}
-	
-	#if php
-	@:native('accumulate')
-	#end
-	public inline function yield(product:Yield<Item, Quality>)
-		trigger.trigger(product);
 }
 
 class SignalStream<Item, Quality> extends Generator<Item, Quality> {

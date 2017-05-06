@@ -10,24 +10,25 @@ using tink.CoreApi;
 class AccumulatorTest extends TestCase {
   function testNormal() {
     var done = false;
-    var a = new Accumulator();
-    a.yield(Data(1));
-    a.yield(Data(2));
-    a.yield(Data(3));
+    var a = Accumulator.trigger();
+    var stream = a.asStream();
+    a.trigger(Data(1));
+    a.trigger(Data(2));
+    a.trigger(Data(3));
     
     var i = 0;
     var sum = 0;
-    var result = a.forEach(function (v) {
+    var result = stream.forEach(function (v) {
       assertEquals(++i, v);
       sum += v;
       return Resume;
     });
     
-    a.yield(Data(4));
-    a.yield(Data(5));
-    a.yield(End);
-    a.yield(Data(6));
-    a.yield(Data(7));
+    a.trigger(Data(4));
+    a.trigger(Data(5));
+    a.trigger(End);
+    a.trigger(Data(6));
+    a.trigger(Data(7));
     
     result.handle(function (x) {
       assertEquals(Depleted, x);
@@ -39,22 +40,23 @@ class AccumulatorTest extends TestCase {
   
   function testError() {
     var done = false;
-    var a = new Accumulator();
-    a.yield(Data(1));
-    a.yield(Data(2));
-    a.yield(Data(3));
+    var a = Accumulator.trigger();
+    var stream = a.asStream();
+    a.trigger(Data(1));
+    a.trigger(Data(2));
+    a.trigger(Data(3));
     
     var i = 0;
     var sum = 0;
-    var result = a.forEach(function (v) {
+    var result = stream.forEach(function (v) {
       assertEquals(++i, v);
       sum += v;
       return Resume;
     });
     
-    a.yield(Data(4));
-    a.yield(Data(5));
-    a.yield(Fail(new Error('Failed')));
+    a.trigger(Data(4));
+    a.trigger(Data(5));
+    a.trigger(Fail(new Error('Failed')));
     
     result.handle(function (x) {
       assertTrue(x.match(Failed(_)));
@@ -65,17 +67,18 @@ class AccumulatorTest extends TestCase {
   }
   
   function testReuse() {
-    var a = new Accumulator();
-    a.yield(Data(1));
-    a.yield(Data(2));
-    a.yield(Data(3));
-    a.yield(End);
+    var a = Accumulator.trigger();
+    var stream = a.asStream();
+    a.trigger(Data(1));
+    a.trigger(Data(2));
+    a.trigger(Data(3));
+    a.trigger(End);
     
     var count = 0;
     function iterate() {
       var i = 0;
       var sum = 0;
-      a.forEach(function (v) {
+      stream.forEach(function (v) {
         assertEquals(++i, v);
         sum += v;
         return Resume;
