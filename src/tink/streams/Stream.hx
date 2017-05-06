@@ -305,15 +305,16 @@ class StreamBase<Item, Quality> implements StreamObject<Item, Quality> {
   }
       
   public function next():Future<Step<Item, Quality>> {
-    var item = null;
-    return this.forEach(function(i) {
-      item = i;
-      return Finish;
-    }).map(function(o):Step<Item, Quality> return switch o {
-      case Depleted: End;
-      case Halted(rest): Link(item, rest);
-      case Failed(e): Fail(e);
-    });
+    throw 'not implemented';
+    // var item = null;
+    // return this.forEach(function(i) {
+    //   item = i;
+    //   return Finish;
+    // }).map(function(o):Step<Item, Quality> return switch o {
+    //   case Depleted: End;
+    //   case Halted(rest): Link(item, rest);
+    //   case Failed(e): Fail(e);
+    // });
   }
   
   public function regroup<Ret>(f:Regrouper<Item, Ret, Quality>):Stream<Ret, Quality> 
