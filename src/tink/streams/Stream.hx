@@ -331,7 +331,7 @@ class StreamBase<Item, Quality> implements StreamObject<Item, Quality> {
   public function blend(other:Stream<Item, Quality>):Stream<Item, Quality>
     return 
       if (depleted) other;
-      else new BlendStream(other, this);
+      else new BlendStream(this, other);
     
   public function decompose(into:Array<Stream<Item, Quality>>) 
     if (!depleted)
