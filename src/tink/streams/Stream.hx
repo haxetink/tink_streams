@@ -78,7 +78,11 @@ private class TailedStream<Item, Quality> extends StreamBase<Item, Quality> {
   }
   
   override function next():Future<Step<Item, Quality>>
-    return head.next();
+    return head.next().flatMap(function(o) return switch o {
+      case End: tail.get().next();
+      case Fail(e): Future.sync(Fail(e));
+      case Link(data, rest): Future.sync(Link(data, new TailedStream(rest, tail)));
+    });
   
   override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> {
     return head.forEach(handler).flatMap(function(o) return switch o {
