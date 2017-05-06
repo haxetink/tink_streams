@@ -77,6 +77,9 @@ private class TailedStream<Item, Quality> extends StreamBase<Item, Quality> {
     this.tail = tail;
   }
   
+  override function next():Future<Step<Item, Quality>>
+    return head.next();
+  
   override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> {
     return head.forEach(handler).flatMap(function(o) return switch o {
       case Depleted: tail.get().forEach(handler);
@@ -162,6 +165,9 @@ private class CloggedStream<Item> extends StreamBase<Item, Error> {
     this.rest = rest;
     this.error = error;
   }
+  
+  override function next():Future<Step<Item, Error>>
+    return Future.sync(Fail(error));
     
   override public function forEach<Safety>(handler:Handler<Item,Safety>):Future<Conclusion<Item, Safety, Error>>
     return Future.sync(cast Conclusion.Clogged(error, rest));
@@ -174,6 +180,9 @@ private class ErrorStream<Item> extends StreamBase<Item, Error> {
   
   public function new(error)
     this.error = error;
+  
+  override function next():Future<Step<Item, Error>>
+    return Future.sync(Fail(error));
     
   override public function forEach<Safety>(handler:Handler<Item,Safety>):Future<Conclusion<Item, Safety, Error>>
     return Future.sync(Conclusion.Failed(error));
@@ -398,6 +407,9 @@ class Single<Item, Quality> extends StreamBase<Item, Quality> {
   public function new(value) 
     this.value = value;
     
+  override function next():Future<Step<Item, Quality>>
+    return Future.sync(Link(value.get(), Empty.make()));
+    
   override public function forEach<Safety>(handle:Handler<Item,Safety>)
     return handle.apply(value).map(function (step):Conclusion<Item, Safety, Quality> return switch step {
       case BackOff:
@@ -474,6 +486,11 @@ private class CompoundStream<Item, Quality> extends StreamBase<Item, Quality> {
       case [s]: s.depleted;
       default: false;
     }
+    
+  override function next():Future<Step<Item, Quality>> {
+    return if(parts.length == 0) Future.sync(End);
+    else parts[0].next();
+  }
   
   override public function decompose(into:Array<Stream<Item, Quality>>):Void 
     for (p in parts)
@@ -532,6 +549,9 @@ class FutureStream<Item, Quality> extends StreamBase<Item, Quality> {
   var f:Future<Stream<Item, Quality>>;
   public function new(f)
     this.f = f;
+    
+  override function next():Future<Step<Item, Quality>>
+    return f.flatMap(function(s) return s.next());
     
   override public function forEach<Safety>(handler:Handler<Item, Safety>) {
     return Future.async(function (cb) {
