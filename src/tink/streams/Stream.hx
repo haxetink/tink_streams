@@ -182,6 +182,7 @@ private class ErrorStream<Item> extends StreamBase<Item, Error> {
 
 interface StreamObject<Item, Quality> {
   var depleted(get, never):Bool;
+  function next():Future<Step<Item, Quality>>;
   function regroup<Ret>(f:Regrouper<Item, Ret, Quality>):Stream<Ret, Quality>;
   function map<Ret>(f:Mapping<Item, Ret, Quality>):Stream<Ret, Quality>;
   function filter(f:Filter<Item, Quality>):Stream<Item, Quality>;
@@ -189,6 +190,7 @@ interface StreamObject<Item, Quality> {
   function idealize(rescue:Error->Stream<Item, Quality>):IdealStream<Item>;
   function append(other:Stream<Item, Quality>):Stream<Item, Quality>;
   function prepend(other:Stream<Item, Quality>):Stream<Item, Quality>;
+  function blend(other:Stream<Item, Quality>):Stream<Item, Quality>;
   function decompose(into:Array<Stream<Item, Quality>>):Void;
   function forEach<Safety>(handle:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>>;
   function reduce<Safety, Result>(initial:Result, reducer:Reducer<Item, Safety, Result>):Future<Reduction<Item, Safety, Quality, Result>>;
@@ -200,6 +202,9 @@ class Empty<Item, Quality> extends StreamBase<Item, Quality> {
   
   override function get_depleted()
     return true;
+    
+  override function next():Future<Step<Item, Quality>>
+    return Future.sync(End);
     
   override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> 
     return Future.sync(Depleted);
@@ -289,6 +294,18 @@ class StreamBase<Item, Quality> implements StreamObject<Item, Quality> {
       }
     }
   }
+      
+  public function next():Future<Step<Item, Quality>> {
+    var item = null;
+    return this.forEach(function(i) {
+      item = i;
+      return Finish;
+    }).map(function(o):Step<Item, Quality> return switch o {
+      case Depleted: End;
+      case Halted(rest): Link(item, rest);
+      case Failed(e): Fail(e);
+    });
+  }
   
   public function regroup<Ret>(f:Regrouper<Item, Ret, Quality>):Stream<Ret, Quality> 
     return new RegroupStream(this, f);
@@ -310,6 +327,11 @@ class StreamBase<Item, Quality> implements StreamObject<Item, Quality> {
     return 
       if (depleted) other;
       else CompoundStream.of([other, this]);
+  
+  public function blend(other:Stream<Item, Quality>):Stream<Item, Quality>
+    return 
+      if (depleted) other;
+      else new BlendStream(other, this);
     
   public function decompose(into:Array<Stream<Item, Quality>>) 
     if (!depleted)
@@ -518,15 +540,48 @@ class FutureStream<Item, Quality> extends StreamBase<Item, Quality> {
   }
 }
 
-class Generator<Item, Quality> extends StreamBase<Item, Quality> {
-  var next:Future<Step<Item, Quality>>;
+class BlendStream<Item, Quality> extends Generator<Item, Quality> {
   
-  function new(next) 
-    this.next = next;
+  public function new(a:Stream<Item, Quality>, b:Stream<Item, Quality>) {
+    var first = null;
+    
+    function wait(s:Stream<Item, Quality>) {
+      return s.next().map(function(o) {
+        if(first == null) first = s;
+        return o;
+      });
+    }
+    
+    var n1 = wait(a);
+    var n2 = wait(b);
+    
+    super(Future.async(function(cb) {
+      n1.first(n2).handle(function(o) switch o {
+        case End:
+          (first == a ? n2 : n1).handle(cb);
+        case Fail(e):
+          cb(Fail(e));
+        case Link(item, rest):
+          cb(Link(item, new BlendStream(rest, first == a ? b : a)));
+      });
+    }));
+    
+  }
+}
+
+
+class Generator<Item, Quality> extends StreamBase<Item, Quality> {
+  var upcoming:Future<Step<Item, Quality>>;
+  
+  function new(upcoming) 
+    this.upcoming = upcoming;
+    
+  override function next():Future<Step<Item, Quality>>
+    return upcoming;
   
   override public function forEach<Safety>(handler:Handler<Item, Safety>)
     return Future.async(function (cb:Conclusion<Item, Safety, Quality>->Void) 
-      next.handle(function (e) switch e {
+      upcoming.handle(function (e) switch e {
         case Link(v, then):
           handler.apply(v).handle(function (s) switch s {
             case BackOff:
