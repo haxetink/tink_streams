@@ -43,6 +43,7 @@ enum RegroupStatus<Quality> {
 
 enum RegroupResult<Out, Quality> {
   Converted(data:Stream<Out, Quality>):RegroupResult<Out, Quality>;
+  Terminated(data:Option<Stream<Out, Quality>>):RegroupResult<Out, Quality>;
   Untouched:RegroupResult<Out, Quality>;
   Errored(e:Error):RegroupResult<Out, Error>;
 }
@@ -100,12 +101,17 @@ private class RegroupStream<In, Out, Quality> extends TailedStream<Out, Quality>
   
   function getTail():Stream<Out, Quality> {
     var ret = null;
+    var terminated = false;
     var buf = [];
     return Stream.flatten(source.forEach(function(item) {
       buf.push(item);
       return f.apply(buf, Flowing).map(function (o):Handled<Error> return switch o {
         case Converted(v):
           ret = v;
+          Finish;
+        case Terminated(v):
+          ret = v.or(Empty.make);
+          terminated = true;
           Finish;
         case Untouched:
           Resume;
@@ -118,9 +124,11 @@ private class RegroupStream<In, Out, Quality> extends TailedStream<Out, Quality>
       case Depleted:
         Stream.flatten(f.apply(buf, Ended).map(function(o) return switch o {
           case Converted(v): v;
+          case Terminated(v): v.or(Empty.make);
           case Untouched: Empty.make();
           case Errored(e): cast Stream.ofError(e);
         }));
+      case Halted(_) if(terminated): ret;
       case Halted(rest): new RegroupStream(rest, f, ret);
       case Clogged(e, rest): cast new CloggedStream(e, cast rest);
     }));
