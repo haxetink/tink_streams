@@ -43,6 +43,7 @@ enum RegroupStatus<Quality> {
 
 enum RegroupResult<Out, Quality> {
   Converted(data:Stream<Out, Quality>):RegroupResult<Out, Quality>;
+  Terminated(data:Option<Stream<Out, Quality>>):RegroupResult<Out, Quality>;
   Untouched:RegroupResult<Out, Quality>;
   Errored(e:Error):RegroupResult<Out, Error>;
 }
@@ -67,52 +68,22 @@ private typedef RegrouperBase<In, Out, Quality> = {
   function apply(input:Array<In>, status:RegroupStatus<Quality>):Future<RegroupResult<Out, Quality>>;
 }
 
-private class TailedStream<Item, Quality> extends StreamBase<Item, Quality> {
-  
-  var head:Stream<Item, Quality>;
-  var tail:Lazy<Stream<Item, Quality>>;
-  
-  public function new(head, tail) {
-    this.head = head;
-    this.tail = tail;
-  }
-  
-  override function next():Future<Step<Item, Quality>>
-    return head.next().flatMap(function(o) return switch o {
-      case End: tail.get().next();
-      case Fail(e): Future.sync(Fail(e));
-      case Link(data, rest): Future.sync(Link(data, new TailedStream(rest, tail)));
-    });
-  
-  override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> {
-    return head.forEach(handler).flatMap(function(o) return switch o {
-      case Depleted: tail.get().forEach(handler);
-      case Halted(rest): Future.sync(Halted(new TailedStream(rest, tail)));
-      case Clogged(e, rest): Future.sync(Clogged(e, new TailedStream(rest, tail)));
-      case Failed(e): Future.sync(o);
-    });
-  }
-}
-
-private class RegroupStream<In, Out, Quality> extends TailedStream<Out, Quality> {
-  
-  var source:Stream<In, Quality>;
-  var f:Regrouper<In, Out, Quality>;
-  
-  public function new(source, f, ?prev) {
-    this.source = source;
-    this.f = f;
-    super(prev == null ? Empty.make() : prev, getTail);
-  }
-  
-  function getTail():Stream<Out, Quality> {
+private class RegroupStream<In, Out, Quality> extends CompoundStream<Out, Quality> {
+  public function new(source:Stream<In, Quality>, f:Regrouper<In, Out, Quality>, ?prev) {
+    if(prev == null) prev = Empty.make();
+    
     var ret = null;
+    var terminated = false;
     var buf = [];
-    return Stream.flatten(source.forEach(function(item) {
+    var next = Stream.flatten(source.forEach(function(item) {
       buf.push(item);
       return f.apply(buf, Flowing).map(function (o):Handled<Error> return switch o {
         case Converted(v):
           ret = v;
+          Finish;
+        case Terminated(v):
+          ret = v.or(Empty.make);
+          terminated = true;
           Finish;
         case Untouched:
           Resume;
@@ -125,14 +96,18 @@ private class RegroupStream<In, Out, Quality> extends TailedStream<Out, Quality>
       case Depleted:
         Stream.flatten(f.apply(buf, Ended).map(function(o) return switch o {
           case Converted(v): v;
+          case Terminated(v): v.or(Empty.make);
           case Untouched: Empty.make();
           case Errored(e): cast Stream.ofError(e);
         }));
+      case Halted(_) if(terminated): ret;
       case Halted(rest): new RegroupStream(rest, f, ret);
       case Clogged(e, rest): cast new CloggedStream(e, cast rest);
     }));
+    // TODO: get rid of those casts in this function
+    
+    super([prev, next]);
   }
-  // TODO: get rid of those casts in this function
 }
 
 enum Handled<Safety> {
@@ -194,18 +169,56 @@ private class ErrorStream<Item> extends StreamBase<Item, Error> {
 }
 
 interface StreamObject<Item, Quality> {
+  /**
+   *  `true` if there is no data in this stream
+   */
   var depleted(get, never):Bool;
   function next():Future<Step<Item, Quality>>;
+  /**
+   *  Create a new stream by performing an N-to-M mapping
+   */
   function regroup<Ret>(f:Regrouper<Item, Ret, Quality>):Stream<Ret, Quality>;
+  /**
+   *  Create a new stream by performing an 1-to-1 mapping
+   */
   function map<Ret>(f:Mapping<Item, Ret, Quality>):Stream<Ret, Quality>;
+  /**
+   *  Create a filtered stream
+   */
   function filter(f:Filter<Item, Quality>):Stream<Item, Quality>;
   function retain():Void->Void;
+  /**
+   *  Create an IdealStream.
+   *  The stream returned from the `rescue` function will be recursively rescued by the same `rescue` function
+   */
   function idealize(rescue:Error->Stream<Item, Quality>):IdealStream<Item>;
+  /**
+   *  Append another stream after this
+   */
   function append(other:Stream<Item, Quality>):Stream<Item, Quality>;
+  /**
+   *  Prepend another stream before this
+   */
   function prepend(other:Stream<Item, Quality>):Stream<Item, Quality>;
   function blend(other:Stream<Item, Quality>):Stream<Item, Quality>;
   function decompose(into:Array<Stream<Item, Quality>>):Void;
+  /**
+   *  Iterate this stream.
+   *  The handler should return one of the following values (or a `Future` of it)
+   *  - Backoff: stop the iteration before the current item
+   *  - Finish: stop the iteration after the current item
+   *  - Resume: continue the iteration
+   *  - Clog(error): produce an error
+   *  @return A conclusion that indicates how the iteration was ended
+   *  - Depleted: there are no more data in the stream
+   *  - Failed(err): the stream produced an error
+   *  - Halted(rest): the iteration was halted by `Backoff` or `Finish`
+   *  - Clogged(err): the iteration was halted by `Clog(err)`
+   */
   function forEach<Safety>(handle:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>>;
+  /**
+   *  Think Lambda.fold()
+   */
   function reduce<Safety, Result>(initial:Result, reducer:Reducer<Item, Safety, Result>):Future<Reduction<Item, Safety, Quality, Result>>;
 }
 
