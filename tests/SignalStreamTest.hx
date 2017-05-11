@@ -1,17 +1,16 @@
 package;
 
 import haxe.unit.TestCase;
-import tink.streams.Accumulator;
 import tink.streams.Stream;
 using StringTools;
 
 using tink.CoreApi;
 
-class AccumulatorTest extends TestCase {
+class SignalStreamTest extends TestCase {
   function testNormal() {
     var done = false;
-    var a = Accumulator.trigger();
-    var stream = a.asStream();
+    var a = Signal.trigger();
+    var stream = new SignalStream(a.asSignal());
     a.trigger(Data(1));
     a.trigger(Data(2));
     a.trigger(Data(3));
@@ -40,8 +39,8 @@ class AccumulatorTest extends TestCase {
   
   function testError() {
     var done = false;
-    var a = Accumulator.trigger();
-    var stream = a.asStream();
+    var a = Signal.trigger();
+    var stream = new SignalStream(a.asSignal());
     a.trigger(Data(1));
     a.trigger(Data(2));
     a.trigger(Data(3));
@@ -67,8 +66,8 @@ class AccumulatorTest extends TestCase {
   }
   
   function testReuse() {
-    var a = Accumulator.trigger();
-    var stream = a.asStream();
+    var a = Signal.trigger();
+    var stream = new SignalStream(a.asSignal());
     a.trigger(Data(1));
     a.trigger(Data(2));
     a.trigger(Data(3));

@@ -15,7 +15,7 @@ class RunTests {
     
     var t = new TestRunner();
     t.add(new StreamTest());
-    t.add(new AccumulatorTest());
+    t.add(new SignalStreamTest());
     
     travix.Logger.exit(
       if (t.run()) 0
