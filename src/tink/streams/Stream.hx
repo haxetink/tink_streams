@@ -164,16 +164,54 @@ private class ErrorStream<Item> extends StreamBase<Item, Error> {
 }
 
 interface StreamObject<Item, Quality> {
+  /**
+   *  `true` if there is no data in this stream
+   */
   var depleted(get, never):Bool;
+  /**
+   *  Create a new stream by performing an N-to-M mapping
+   */
   function regroup<Ret>(f:Regrouper<Item, Ret, Quality>):Stream<Ret, Quality>;
+  /**
+   *  Create a new stream by performing an 1-to-1 mapping
+   */
   function map<Ret>(f:Mapping<Item, Ret, Quality>):Stream<Ret, Quality>;
+  /**
+   *  Create a filtered stream
+   */
   function filter(f:Filter<Item, Quality>):Stream<Item, Quality>;
   function retain():Void->Void;
+  /**
+   *  Create an IdealStream.
+   *  The stream returned from the `rescue` function will be recursively rescued by the same `rescue` function
+   */
   function idealize(rescue:Error->Stream<Item, Quality>):IdealStream<Item>;
+  /**
+   *  Append another stream after this
+   */
   function append(other:Stream<Item, Quality>):Stream<Item, Quality>;
+  /**
+   *  Prepend another stream before this
+   */
   function prepend(other:Stream<Item, Quality>):Stream<Item, Quality>;
   function decompose(into:Array<Stream<Item, Quality>>):Void;
+  /**
+   *  Iterate this stream.
+   *  The handler should return one of the following values (or a `Future` of it)
+   *  - Backoff: stop the iteration before the current item
+   *  - Finish: stop the iteration after the current item
+   *  - Resume: continue the iteration
+   *  - Clog(error): produce an error
+   *  @return A conclusion that indicates how the iteration was ended
+   *  - Depleted: there are no more data in the stream
+   *  - Failed(err): the stream produced an error
+   *  - Halted(rest): the iteration was halted by `Backoff` or `Finish`
+   *  - Clogged(err): the iteration was halted by `Clog(err)`
+   */
   function forEach<Safety>(handle:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>>;
+  /**
+   *  Think Lambda.fold()
+   */
   function reduce<Safety, Result>(initial:Result, reducer:Reducer<Item, Safety, Result>):Future<Reduction<Item, Safety, Quality, Result>>;
 }
 
