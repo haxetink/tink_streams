@@ -68,27 +68,7 @@ private typedef RegrouperBase<In, Out, Quality> = {
   function apply(input:Array<In>, status:RegroupStatus<Quality>):Future<RegroupResult<Out, Quality>>;
 }
 
-private class TailedStream<Item, Quality> extends StreamBase<Item, Quality> {
-  
-  var head:Stream<Item, Quality>;
-  var tail:Lazy<Stream<Item, Quality>>;
-  
-  public function new(head, tail) {
-    this.head = head;
-    this.tail = tail;
-  }
-  
-  override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> {
-    return head.forEach(handler).flatMap(function(o) return switch o {
-      case Depleted: tail.get().forEach(handler);
-      case Halted(rest): Future.sync(Halted(new TailedStream(rest, tail)));
-      case Clogged(e, rest): Future.sync(Clogged(e, new TailedStream(rest, tail)));
-      case Failed(e): Future.sync(o);
-    });
-  }
-}
-
-private class RegroupStream<In, Out, Quality> extends TailedStream<Out, Quality> {
+private class RegroupStream<In, Out, Quality> extends CompoundStream<Out, Quality> {
   
   var source:Stream<In, Quality>;
   var f:Regrouper<In, Out, Quality>;
@@ -96,10 +76,10 @@ private class RegroupStream<In, Out, Quality> extends TailedStream<Out, Quality>
   public function new(source, f, ?prev) {
     this.source = source;
     this.f = f;
-    super(prev == null ? Empty.make() : prev, getTail);
+    super([prev == null ? Empty.make() : prev, tail()]);
   }
   
-  function getTail():Stream<Out, Quality> {
+  function tail():Stream<Out, Quality> {
     var ret = null;
     var terminated = false;
     var buf = [];
