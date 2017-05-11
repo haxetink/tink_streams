@@ -70,20 +70,13 @@ private typedef RegrouperBase<In, Out, Quality> = {
 
 private class RegroupStream<In, Out, Quality> extends CompoundStream<Out, Quality> {
   
-  var source:Stream<In, Quality>;
-  var f:Regrouper<In, Out, Quality>;
-  
-  public function new(source, f, ?prev) {
-    this.source = source;
-    this.f = f;
-    super([prev == null ? Empty.make() : prev, tail()]);
-  }
-  
-  function tail():Stream<Out, Quality> {
+  public function new(source:Stream<In, Quality>, f:Regrouper<In, Out, Quality>, ?prev) {
+    if(prev == null) prev = Empty.make();
+    
     var ret = null;
     var terminated = false;
     var buf = [];
-    return Stream.flatten(source.forEach(function(item) {
+    var next = Stream.flatten(source.forEach(function(item) {
       buf.push(item);
       return f.apply(buf, Flowing).map(function (o):Handled<Error> return switch o {
         case Converted(v):
@@ -112,8 +105,10 @@ private class RegroupStream<In, Out, Quality> extends CompoundStream<Out, Qualit
       case Halted(rest): new RegroupStream(rest, f, ret);
       case Clogged(e, rest): cast new CloggedStream(e, cast rest);
     }));
+    // TODO: get rid of those casts in this function
+    
+    super([prev, next]);
   }
-  // TODO: get rid of those casts in this function
 }
 
 enum Handled<Safety> {
