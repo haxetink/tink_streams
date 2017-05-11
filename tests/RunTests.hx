@@ -15,6 +15,8 @@ class RunTests {
     
     var t = new TestRunner();
     t.add(new StreamTest());
+    t.add(new BlendTest());
+    t.add(new AccumulatorTest());
     t.add(new SignalStreamTest());
     
     travix.Logger.exit(
