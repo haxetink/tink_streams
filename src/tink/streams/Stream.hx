@@ -146,7 +146,7 @@ private class CloggedStream<Item> extends StreamBase<Item, Error> {
   }
   
   override function next():Future<Step<Item, Error>>
-    return Future.sync(Fail(error));
+    return Future.sync(Step.Fail(error));
     
   override public function forEach<Safety>(handler:Handler<Item,Safety>):Future<Conclusion<Item, Safety, Error>>
     return Future.sync(cast Conclusion.Clogged(error, rest));
@@ -161,7 +161,7 @@ private class ErrorStream<Item> extends StreamBase<Item, Error> {
     this.error = error;
   
   override function next():Future<Step<Item, Error>>
-    return Future.sync(Fail(error));
+    return Future.sync(Step.Fail(error));
     
   override public function forEach<Safety>(handler:Handler<Item,Safety>):Future<Conclusion<Item, Safety, Error>>
     return Future.sync(Conclusion.Failed(error));
@@ -230,7 +230,7 @@ class Empty<Item, Quality> extends StreamBase<Item, Quality> {
     return true;
     
   override function next():Future<Step<Item, Quality>>
-    return Future.sync(End);
+    return Future.sync(Step.End);
     
   override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> 
     return Future.sync(Depleted);
@@ -506,7 +506,7 @@ private class CompoundStream<Item, Quality> extends StreamBase<Item, Quality> {
     }
     
   override function next():Future<Step<Item, Quality>> {
-    return if(parts.length == 0) Future.sync(End);
+    return if(parts.length == 0) Future.sync(Step.End);
     else parts[0].next();
   }
   

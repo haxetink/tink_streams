@@ -1,7 +1,6 @@
 package;
 
 import haxe.unit.TestCase;
-import tink.streams.Accumulator;
 import tink.streams.Stream;
 using StringTools;
 
@@ -10,12 +9,12 @@ using tink.CoreApi;
 class BlendTest extends TestCase {
   function testBlend() {
     var done = false;
-    var a = new Accumulator();
-    var b = new Accumulator();
-    var blended = a.blend(b);
-    a.yield(Data(1));
-    b.yield(Data(2));
-    a.yield(Data(3));
+    var a = Signal.trigger();
+    var b = Signal.trigger();
+    var blended = new SignalStream(a.asSignal()).blend(new SignalStream(b.asSignal()));
+    a.trigger(Data(1));
+    b.trigger(Data(2));
+    a.trigger(Data(3));
     
     var i = 0;
     var sum = 0;
@@ -25,12 +24,12 @@ class BlendTest extends TestCase {
       return Resume;
     });
     
-    a.yield(Data(4));
-    a.yield(End);
-    b.yield(Data(5));
-    b.yield(End);
-    b.yield(Data(6));
-    a.yield(Data(7));
+    a.trigger(Data(4));
+    a.trigger(End);
+    b.trigger(Data(5));
+    b.trigger(End);
+    b.trigger(Data(6));
+    a.trigger(Data(7));
     
     result.handle(function (x) {
       assertEquals(Depleted, x);
@@ -42,12 +41,12 @@ class BlendTest extends TestCase {
   
   function testError() {
     var done = false;
-    var a = new Accumulator();
-    var b = new Accumulator();
-    var blended = a.blend(b);
-    a.yield(Data(1));
-    b.yield(Data(2));
-    a.yield(Data(3));
+    var a = Signal.trigger();
+    var b = Signal.trigger();
+    var blended = new SignalStream(a.asSignal()).blend(new SignalStream(b.asSignal()));
+    a.trigger(Data(1));
+    b.trigger(Data(2));
+    a.trigger(Data(3));
     
     var i = 0;
     var sum = 0;
@@ -57,10 +56,10 @@ class BlendTest extends TestCase {
       return Resume;
     });
     
-    a.yield(Data(4));
-    a.yield(Data(5));
-    b.yield(Fail(new Error('Failed')));
-    a.yield(End);
+    a.trigger(Data(4));
+    a.trigger(Data(5));
+    b.trigger(Fail(new Error('Failed')));
+    a.trigger(End);
     
     result.handle(function (x) {
       assertTrue(x.match(Failed(_)));
@@ -71,14 +70,14 @@ class BlendTest extends TestCase {
   }
   
   function testReuse() {
-    var a = new Accumulator();
-    var b = new Accumulator();
-    var blended = a.blend(b);
-    a.yield(Data(1));
-    b.yield(Data(2));
-    b.yield(End);
-    a.yield(Data(3));
-    a.yield(End);
+    var a = Signal.trigger();
+    var b = Signal.trigger();
+    var blended = new SignalStream(a.asSignal()).blend(new SignalStream(b.asSignal()));
+    a.trigger(Data(1));
+    b.trigger(Data(2));
+    b.trigger(End);
+    a.trigger(Data(3));
+    a.trigger(End);
     
     var count = 0;
     function iterate() {
