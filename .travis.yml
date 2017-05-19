@@ -11,12 +11,13 @@ install:
   - npm install
 
 script:
-  # - npm run travix interp . # runtime stack overflow
-  - npm run travix neko .
-  - npm run travix python .
-  - npm run travix node .
-  # - npm run travix flash .
-  # - npm run travix java .
-  - npm run travix cpp .
-  # - npm run travix cs . # gencs stack overflow, to be investigated
-  - npm run travix php .
+  # - npm run --silent travix interp # runtime stack overflow
+  - npm run --silent travix neko
+  - npm run --silent travix python
+  - npm run --silent travix node
+  # - npm run --silent travix flash
+  # - npm run --silent travix java
+  - npm run --silent travix cpp
+  # - npm run --silent travix cs # gencs stack overflow, to be investigated
+  - npm run --silent travix php
+  - npm run --silent travix lua
