@@ -1,7 +1,7 @@
 # Tinkerbell Streams
 
 [![Build Status](https://travis-ci.org/haxetink/tink_streams.svg?branch=master)](https://travis-ci.org/haxetink/tink_streams)
-[![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg?maxAge=2592000)](https://gitter.im/haxetink/public)
+[![Gitter](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/haxetink/public)
 
 This library provides immutable streams, which are vaguely similar to iterators but might more accurately be thought of as immutable asynchronous lazy lists. Progressing along a stream yields a new stream instead modifying the original. The data in a stream is generated *as needed*.
 
