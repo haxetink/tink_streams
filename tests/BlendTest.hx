@@ -39,6 +39,40 @@ class BlendTest extends TestCase {
     assertTrue(done);
   }
   
+  function testCompound() {
+    var done = false;
+    var a = Signal.trigger();
+    var b = Signal.trigger();
+    var c = Signal.trigger();
+    var blended = new SignalStream(a).append(new SignalStream(c)).blend(new SignalStream(b));
+    a.trigger(Data(1));
+    b.trigger(Data(2));
+    a.trigger(End);
+    c.trigger(Data(3));
+    
+    var i = 0;
+    var sum = 0;
+    var result = blended.forEach(function (v) {
+      assertEquals(++i, v);
+      sum += v;
+      return Resume;
+    });
+    
+    c.trigger(Data(4));
+    c.trigger(End);
+    b.trigger(Data(5));
+    b.trigger(End);
+    b.trigger(Data(6));
+    a.trigger(Data(7));
+    
+    result.handle(function (x) {
+      assertEquals(Depleted, x);
+      assertEquals(15, sum);
+      done = true;
+    });
+    assertTrue(done);
+  }
+  
   function testError() {
     var done = false;
     var a = Signal.trigger();

@@ -507,7 +507,14 @@ private class CompoundStream<Item, Quality> extends StreamBase<Item, Quality> {
     
   override function next():Future<Step<Item, Quality>> {
     return if(parts.length == 0) Future.sync(Step.End);
-    else parts[0].next();
+    else parts[0].next().flatMap(function(v) return switch v {
+      case End if(parts.length > 1): parts[1].next();
+      case Link(v, rest):
+        var copy = parts.copy();
+        copy[0] = rest;
+        Future.sync(Link(v, new CompoundStream(copy)));
+      default: Future.sync(v);
+    });
   }
   
   override public function decompose(into:Array<Stream<Item, Quality>>):Void 
