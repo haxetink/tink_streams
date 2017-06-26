@@ -402,6 +402,12 @@ class IdealizeStream<Item, Quality> extends IdealStreamBase<Item> {
   override function get_depleted()
     return target.depleted;
   
+  override function next():Future<Step<Item, Noise>>
+    return target.next().flatMap(function(v) return switch v {
+      case Fail(e): rescue(e).idealize(rescue).next();
+      default: Future.sync(cast v);
+    });
+    
   override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Noise>>
     return 
       Future.async(function (cb:Conclusion<Item, Safety, Noise>->Void)
