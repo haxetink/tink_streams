@@ -447,12 +447,12 @@ class Single<Item, Quality> extends StreamBase<Item, Quality> {
     });
 }
 
-abstract Handler<Item, Safety>({ apply: Item->Future<Handled<Safety>> }) {
+abstract Handler<Item, Safety>(Item->Futuristic<Handled<Safety>>) {
   inline function new(f) 
-    this = { apply: f };
+    this = f;
 
-  public inline function apply(item)
-    return this.apply(item);
+  public inline function apply(item):Future<Handled<Safety>>
+    return this(item);
     
   @:from static function ofSafeSync<Item>(f:Item->Handled<Noise>):Handler<Item, Noise>
     return new Handler(function (i) return Future.sync(f(i)));
@@ -467,12 +467,12 @@ abstract Handler<Item, Safety>({ apply: Item->Future<Handled<Safety>> }) {
     return new Handler(f);
 }
 
-abstract Reducer<Item, Safety, Result>({ apply: Result->Item->Future<ReductionStep<Safety, Result>> }) {
+abstract Reducer<Item, Safety, Result>(Result->Item->Future<ReductionStep<Safety, Result>>) {
   inline function new(f) 
-    this = { apply: f };
+    this = f;
 
-  public inline function apply(res, item)
-    return this.apply(res, item);
+  public inline function apply(res, item):Future<ReductionStep<Safety, Result>>
+    return this(res, item);
     
   @:from static function ofSafeSync<Item, Result>(f:Result->Item->ReductionStep<Noise, Result>):Reducer<Item, Noise, Result>
     return new Reducer(function (res, cur) return Future.sync(f(res, cur)));
