@@ -467,7 +467,7 @@ abstract Handler<Item, Safety>(Item->Futuristic<Handled<Safety>>) {
     return new Handler(f);
 }
 
-abstract Reducer<Item, Safety, Result>(Result->Item->Future<ReductionStep<Safety, Result>>) {
+abstract Reducer<Item, Safety, Result>(Result->Item->Futuristic<ReductionStep<Safety, Result>>) {
   inline function new(f) 
     this = f;
 
