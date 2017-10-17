@@ -1,549 +1,681 @@
 package tink.streams;
 
-import tink.streams.StreamStep;
+import tink.streams.IdealStream;
+
 using tink.CoreApi;
 
 @:forward
-abstract Stream<T>(StreamObject<T>) from StreamObject<T> to StreamObject<T> {
+abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<Item, Quality> to StreamObject<Item, Quality> {
   
-  @:from static public function later<T>(f:Surprise<Stream<T>, Error>):Stream<T>
+  public var depleted(get, never):Bool;
+    inline function get_depleted() 
+      return this.depleted;
+  
+  @:to function dirty():Stream<Item, Error>
+    return cast this;
+    
+  static public function single<Item, Quality>(i:Item):Stream<Item, Quality>
+    return new Single(i);
+    
+  @:from static public function ofIterator<Item, Quality>(i:Iterator<Item>):Stream<Item, Quality> {
+    return Generator.stream(function next(step) step(if(i.hasNext()) Link(i.next(), Generator.stream(next)) else End));
+  }
+    
+  @:from static public function flatten<Item, Quality>(f:Future<Stream<Item, Quality>>):Stream<Item, Quality>
     return new FutureStream(f);
   
-  @:from static public function ofIterator<T>(i:Iterator<T>):Stream<T>
-    return new IteratorStream(i);
+  @:from static public function promise<Item, Quality>(f:Promise<Stream<Item, Quality>>):Stream<Item, Error>
+    return flatten(f.map(function (o) return switch o {
+      case Success(s): s.dirty();
+      case Failure(e): ofError(e);
+    }));
     
-  @:from static public function failure<T>(e:Error):Stream<T>
-    return generate(function () return Future.sync(Fail(e)));
+  @:from static public function ofError<Item>(e:Error):Stream<Item, Error>
+    return new ErrorStream(e);
     
-  @:from static public function generate<T>(step:Void->Future<StreamStep<T>>):Stream<T>
-    return new Generator(step);
-  
-  public function fold<R>(start:R, reduce:R->T->R):Surprise<R, Error>
-    return Future.async(function (cb) {
-      this.forEach(function (x) {
-        start = reduce(start, x);
-        return true;
-      }).handle(function (o) cb(switch o {
-        case Failure(e):
-          Failure(e);
-        default:
-          Success(start);
-      }));
-    });  
-  
-  public function foldAsync<R>(start:R, reduce:R->T->Future<R>):Surprise<R, Error>
-    return Future.async(function (cb) {
-      this.forEachAsync(function (x) {
-        return reduce(start, x).map(function (v) { start = v; return true; });
-      }).handle(function (o) cb(switch o {
-        case Failure(e):
-          Failure(e);
-        default:
-          Success(start);
-      }));
-    }); 
-  
-  public function collect():Surprise<Array<T>, Error> {
-    var ret = [];
-    return this.forEach(function(x) {
-      ret.push(x);
-      return true;
-    }) >>
-      function(_) return ret;
-  }
-    
-  @:op(a...b) static public function concat<A>(a:Stream<A>, b:Stream<A>):Stream<A> 
-    return ConcatStream.make([a, b]);
 }
 
-private class FutureStream<T> extends StreamBase<T> {
-  
-  var target:Surprise<Stream<T>, Error>;
-  
-  public function new(target)
-    this.target = target;
-    
-  function later<Out>(f:Stream<T>->Surprise<Out, Error>):Surprise<Out, Error>
-    return 
-      Future.async(function (cb) 
-        target.handle(function (o) switch o {
-          case Failure(e): cb(Failure(e));
-          case Success(s): f(s).handle(cb);
-        })
-      );
-      
-  override public function forEach(item:T->Bool):Surprise<Bool, Error> 
-    return later(function (s) return s.forEach(item));
-  
-  override public function forEachAsync(item:T->Future<Bool>):Surprise<Bool, Error> 
-    return later(function (s) return s.forEachAsync(item));
+enum RegroupStatus<Quality> {
+  Flowing:RegroupStatus<Quality>;
+  Errored(e:Error):RegroupStatus<Error>;
+  Ended:RegroupStatus<Quality>;
 }
 
-interface StreamObject<T> {
-    
-  function next():Future<StreamStep<T>>;
-  function forEach(item:T->Bool):Surprise<Bool, Error>;
-  function forEachAsync(item:T->Future<Bool>):Surprise<Bool, Error>;
-  
-  function map<R>(item:T->R):Stream<R>;
-  function mapAsync<R>(item:T->Future<R>):Stream<R>;
-  
-  function filter(item:T->Bool):Stream<T>;
-  function filterAsync(item:T->Future<Bool>):Stream<T>;
-  
-  function merge<R>(item:Array<T>->Option<R>):Stream<R>;
-  function mergeAsync<R>(item:Array<T>->Future<Option<R>>):Stream<R>;
-  
+enum RegroupResult<Out, Quality> {
+  Converted(data:Stream<Out, Quality>):RegroupResult<Out, Quality>;
+  Terminated(data:Option<Stream<Out, Quality>>):RegroupResult<Out, Quality>;
+  Untouched:RegroupResult<Out, Quality>;
+  Errored(e:Error):RegroupResult<Out, Error>;
 }
 
-class Generator<T> extends StepWise<T> {
-  var step:Void->Future<StreamStep<T>>;
-  var waiting:Array<FutureTrigger<StreamStep<T>>>;
-  
-  public function new(step) {
-    this.step = step;
-    this.waiting = new Array<FutureTrigger<StreamStep<T>>>();
-  }
-  
-  override public function next():Future<StreamStep<T>> {
-    var ret = Future.trigger();
+@:forward
+abstract Regrouper<In, Out, Quality>(RegrouperBase<In, Out, Quality>) from RegrouperBase<In, Out, Quality> to RegrouperBase<In, Out, Quality> {
+  @:from
+  public static function ofIgnorance<In, Out, Quality>(f:Array<In>->Future<RegroupResult<Out, Quality>>):Regrouper<In, Out, Quality>
+    return {apply: function(i, _) return f(i)};
+  @:from
+  public static function ofIgnoranceSync<In, Out, Quality>(f:Array<In>->RegroupResult<Out, Quality>):Regrouper<In, Out, Quality>
+    return {apply: function(i, _) return Future.sync(f(i))};
+  @:from
+  public static function ofFunc<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->Future<RegroupResult<Out, Quality>>):Regrouper<In, Out, Quality>
+    return {apply: f};
+  @:from
+  public static function ofFuncSync<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->RegroupResult<Out, Quality>):Regrouper<In, Out, Quality>
+    return {apply: function(i, s) return Future.sync(f(i, s))};
+}
+
+private typedef RegrouperBase<In, Out, Quality> = {
+  function apply(input:Array<In>, status:RegroupStatus<Quality>):Future<RegroupResult<Out, Quality>>;
+}
+
+private class RegroupStream<In, Out, Quality> extends CompoundStream<Out, Quality> {
+  public function new(source:Stream<In, Quality>, f:Regrouper<In, Out, Quality>, ?prev) {
+    if(prev == null) prev = Empty.make();
     
-    if (waiting.push(ret) == 1)
-      step().handle(ret.trigger);
-    else
-      waiting[waiting.length - 2].asFuture().handle(function () step().handle(ret.trigger));
-      
-    return ret;
+    var ret = null;
+    var terminated = false;
+    var buf = [];
+    var next = Stream.flatten(source.forEach(function(item) {
+      buf.push(item);
+      return f.apply(buf, Flowing).map(function (o):Handled<Error> return switch o {
+        case Converted(v):
+          ret = v;
+          Finish;
+        case Terminated(v):
+          ret = v.or(Empty.make);
+          terminated = true;
+          Finish;
+        case Untouched:
+          Resume;
+        case Errored(e):
+          Clog(e);
+      });
+    }).map(function(o):Stream<Out, Quality> return switch o {
+      case Failed(e): Stream.ofError(e);
+      case Depleted if(buf.length == 0): Empty.make();
+      case Depleted:
+        Stream.flatten(f.apply(buf, Ended).map(function(o) return switch o {
+          case Converted(v): v;
+          case Terminated(v): v.or(Empty.make);
+          case Untouched: Empty.make();
+          case Errored(e): cast Stream.ofError(e);
+        }));
+      case Halted(_) if(terminated): ret;
+      case Halted(rest): new RegroupStream(rest, f, ret);
+      case Clogged(e, rest): cast new CloggedStream(e, cast rest);
+    }));
+    // TODO: get rid of those casts in this function
+    
+    super([prev, next]);
   }
 }
 
-#if cs
-private abstract Maybe<T>(Ref<T>) {
-  inline function new(o) this = o;
-  
-  @:to public inline function isSet():Bool
-    return this != null;
-  
-  public inline function get():T
-    return this;
-    
-  public inline function map<R>(f:T->R):Maybe<R>
-    return 
-      if (isSet()) Maybe.Some(f(this));
-      else Maybe.None();
-    
-  public inline function flatMap<R>(f:T->Maybe<R>):Maybe<R>
-    return
-      if (isSet()) f(this);
-      else Maybe.None();
-  
-  static public inline function Some<T>(v:T):Maybe<T> return new Maybe(v);
-  static public inline function None<T>():Maybe<T> return null;
-}
-#else
-private abstract Maybe<T>(Null<T>) {
-  inline function new(o) this = o;
-  
-  @:to public inline function isSet():Bool
-    return this != null;
-  
-  public inline function get():T
-    return this;
-    
-  public inline function map<R>(f:T->R):Maybe<R>
-    return 
-      if (isSet()) Maybe.Some(f(this));
-      else Maybe.None();
-    
-  public inline function flatMap<R>(f:T->Maybe<R>):Maybe<R>
-    return
-      if (isSet()) f(this);
-      else Maybe.None();
-  
-  static public inline function Some<T>(v:T):Maybe<T> return new Maybe(v);
-  static public inline function None<T>():Maybe<T> return null;
-}
-#end
-
-
-class ConcatStream<T> extends StreamBase<T> {
-  var parts:Array<Stream<T>>;
-
-  function new(parts) 
-    this.parts = parts;  
-    
-  override public function filter(item:T->Bool):Stream<T> 
-    return transform(function (x) return x.filter(item));
-    
-  override public function filterAsync(item:T->Future<Bool>):Stream<T> 
-    return transform(function (x) return x.filterAsync(item));
-    
-  override public function map<R>(item:T->R):Stream<R> 
-    return transform(function (x) return x.map(item));
-    
-  override public function mapAsync<R>(item:T->Future<R>):Stream<R> 
-    return transform(function (x) return x.mapAsync(item));
-    
-  override public function merge<R>(item:Array<T>->Option<R>):Stream<R> 
-    return transform(function (x) return x.merge(item));
-    
-  override public function mergeAsync<R>(item:Array<T>->Future<Option<R>>):Stream<R> 
-    return transform(function (x) return x.mergeAsync(item));
-    
-  function transform<Out>(t:Stream<T>->Stream<Out>):Stream<Out>
-    return new ConcatStream([for (p in parts) t(p)]);
-  
-  function withAll(f:Stream<T>->Surprise<Bool, Error>):Surprise<Bool, Error>
-    return switch parts {
-      case []: 
-        Future.sync(Success(true));
-      default:
-        Future.async(function (cb) {
-          f(parts[0]).handle(function (x) switch x {
-            case Success(v):
-              if (v) {
-                parts.shift();
-                withAll(f).handle(cb);
-              }
-              else 
-                cb(x);
-            case Failure(e):
-              cb(x);
-          });
-        });
-    }
-    
-  override public function forEach(item:T->Bool):Surprise<Bool, Error>
-    return withAll(function (s) return s.forEach(item));
-  
-  override public function forEachAsync(item:T -> Future<Bool>):Surprise<Bool, Error>
-    return withAll(function (s) return s.forEachAsync(item));
-  
-  static public function make<T>(parts:Array<Stream<T>>):Stream<T> {
-    var flat = [];
-    
-    for (p in parts)
-      if (Std.is(p, ConcatStream)) {
-        for (p in (cast p : ConcatStream<T>).parts)
-          flat.push(p);
-      }
-      else
-        flat.push(p);    
-        
-    return new ConcatStream(flat);
-  }
-  
+enum Handled<Safety> {
+  BackOff:Handled<Safety>;
+  Finish:Handled<Safety>;
+  Resume:Handled<Safety>;
+  Clog(e:Error):Handled<Error>;
 }
 
-class IteratorStream<T> extends StepWise<T> {
-  var target:Iterator<T>;
-  var error:Null<Error>;
+enum Conclusion<Item, Safety, Quality> {
+  Halted(rest:Stream<Item, Quality>):Conclusion<Item, Safety, Quality>;
+  Clogged(error:Error, at:Stream<Item, Quality>):Conclusion<Item, Error, Quality>;
+  Failed(error:Error):Conclusion<Item, Safety, Error>;
+  Depleted:Conclusion<Item, Safety, Quality>;
+}
+
+enum ReductionStep<Safety, Result> {
+  Progress(result:Result):ReductionStep<Safety, Result>;
+  Crash(e:Error):ReductionStep<Error, Result>;
+}
+
+enum Reduction<Item, Safety, Quality, Result> {
+  Crashed(error:Error, at:Stream<Item, Quality>):Reduction<Item, Error, Quality, Result>;
+  Failed(error:Error):Reduction<Item, Safety, Error, Result>;  
+  Reduced(result:Result):Reduction<Item, Safety, Quality, Result>;
+}
+
+private class CloggedStream<Item> extends StreamBase<Item, Error> {
   
-  public function new(target, ?error) {
-    this.target = target;
+  var rest:Stream<Item, Error>;
+  var error:Error;
+  
+  public function new(rest, error) {
+    this.rest = rest;
     this.error = error;
   }
+  
+  override function next():Future<Step<Item, Error>>
+    return Future.sync(Step.Fail(error));
     
-  override public function next()
-    return Future.sync(
-      if (target.hasNext()) 
-        Data(target.next()) 
-      else 
-        if (error == null) End
-        else Fail(error)
-    );
-    
-  override public inline function forEach(item:T->Bool):Surprise<Bool, Error> {
-    if (error != null)
-      return Future.sync(Failure(error));
-    
-    while (target.hasNext())
-      if (!item(target.next())) 
-        return Future.sync(Success(false));
-        
-    return Future.sync(Success(true));
-  }
+  override public function forEach<Safety>(handler:Handler<Item,Safety>):Future<Conclusion<Item, Safety, Error>>
+    return Future.sync(cast Conclusion.Clogged(error, rest));
+  
 }
 
-
-class StepWise<T> extends StreamBase<T> {
-  override public function next():Future<StreamStep<T>>
-    return Future.sync(End);
+private class ErrorStream<Item> extends StreamBase<Item, Error> {
+  
+  var error:Error;
+  
+  public function new(error)
+    this.error = error;
+  
+  override function next():Future<Step<Item, Error>>
+    return Future.sync(Step.Fail(error));
     
-  override public function forEach(item:T->Bool):Surprise<Bool, Error> 
-    return Future.async(function (cb) {
-      function next() {
-        while (true) {
-          var touched = false;//TODO: this flag is pure fucking magic. An enum that just gives the different states names would probably be better
-          this.next().handle(function (step) switch step {
-            case Data(data):
-              if (!item(data)) 
-                cb(Success(false));
-              else 
-                if (touched) next();
-                else touched = true;
-            case Fail(e):
-              cb(Failure(e));
-            case End:
-              cb(Success(true));
-          });
-          
-          if (!touched) {
-            touched = true;
-            break;
-          }
-        }
-      }
-      next();
+  override public function forEach<Safety>(handler:Handler<Item,Safety>):Future<Conclusion<Item, Safety, Error>>
+    return Future.sync(Conclusion.Failed(error));
+  
+}
+
+interface StreamObject<Item, Quality> {
+  /**
+   *  `true` if there is no data in this stream
+   */
+  var depleted(get, never):Bool;
+  function next():Future<Step<Item, Quality>>;
+  /**
+   *  Create a new stream by performing an N-to-M mapping
+   */
+  function regroup<Ret>(f:Regrouper<Item, Ret, Quality>):Stream<Ret, Quality>;
+  /**
+   *  Create a new stream by performing an 1-to-1 mapping
+   */
+  function map<Ret>(f:Mapping<Item, Ret, Quality>):Stream<Ret, Quality>;
+  /**
+   *  Create a filtered stream
+   */
+  function filter(f:Filter<Item, Quality>):Stream<Item, Quality>;
+  function retain():Void->Void;
+  /**
+   *  Create an IdealStream.
+   *  The stream returned from the `rescue` function will be recursively rescued by the same `rescue` function
+   */
+  function idealize(rescue:Error->Stream<Item, Quality>):IdealStream<Item>;
+  /**
+   *  Append another stream after this
+   */
+  function append(other:Stream<Item, Quality>):Stream<Item, Quality>;
+  /**
+   *  Prepend another stream before this
+   */
+  function prepend(other:Stream<Item, Quality>):Stream<Item, Quality>;
+  function blend(other:Stream<Item, Quality>):Stream<Item, Quality>;
+  function decompose(into:Array<Stream<Item, Quality>>):Void;
+  /**
+   *  Iterate this stream.
+   *  The handler should return one of the following values (or a `Future` of it)
+   *  - Backoff: stop the iteration before the current item
+   *  - Finish: stop the iteration after the current item
+   *  - Resume: continue the iteration
+   *  - Clog(error): produce an error
+   *  @return A conclusion that indicates how the iteration was ended
+   *  - Depleted: there are no more data in the stream
+   *  - Failed(err): the stream produced an error
+   *  - Halted(rest): the iteration was halted by `Backoff` or `Finish`
+   *  - Clogged(err): the iteration was halted by `Clog(err)`
+   */
+  function forEach<Safety>(handle:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>>;
+  /**
+   *  Think Lambda.fold()
+   */
+  function reduce<Safety, Result>(initial:Result, reducer:Reducer<Item, Safety, Result>):Future<Reduction<Item, Safety, Quality, Result>>;
+}
+
+class Empty<Item, Quality> extends StreamBase<Item, Quality> {
+  
+  function new() {}
+  
+  override function get_depleted()
+    return true;
+    
+  override function next():Future<Step<Item, Quality>>
+    return Future.sync(Step.End);
+    
+  override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> 
+    return Future.sync(Depleted);
+    
+  static var inst = new Empty<Dynamic, Dynamic>();  
+    
+  static public inline function make<Item, Quality>():Stream<Item, Quality>
+    return (cast inst : Stream<Item, Quality>);
+  
+}
+
+abstract Mapping<In, Out, Quality>(Regrouper<In, Out, Quality>) to Regrouper<In, Out, Quality> {
+  
+  inline function new(o)
+    this = o;
+    
+  @:from static function ofNext<In, Out>(n:Next<In, Out>):Mapping<In, Out, Error>
+    return new Mapping({
+      apply: function (i:Array<In>, _) return n(i[0]).next(function(o) return Converted(Stream.single(o))).recover(Errored),
     });
     
-  override public function forEachAsync(item:T->Future<Bool>):Surprise<Bool, Error> {
-    return Future.async(function (cb) {
-      function next() {
-        while (true) {
-          var touched = false;//TODO: this flag is pure fucking magic. An enum that just gives the different states names would probably be better
-          this.next().handle(function (step) switch step {
-            case Data(data):
-              item(data).handle(function (resume) {
-                if (!resume) 
-                  cb(Success(false));
-                else 
-                  if (touched) next();
-                  else touched = true;
-              });
-            case Fail(e):
-              cb(Failure(e));
-            case End:
-              cb(Success(true));
-          });
-          
-          if (!touched) {
-            touched = true;
-            break;
-          }
-        }
-      }
-      next();
+  @:from static function ofAsync<In, Out, Quality>(f:In->Future<Out>):Mapping<In, Out, Quality>
+    return new Mapping({
+      apply: function (i:Array<In>, _) return f(i[0]).map(function(o) return Converted(Stream.single(o))),
     });
-  }  
+    
+  @:from static function ofSync<In, Out>(f:In->Outcome<Out, Error>):Mapping<In, Out, Error>
+    return new Mapping({
+      apply: function (i:Array<In>, _) return Future.sync(switch f(i[0]) {
+        case Success(v): Converted(Stream.single(v));
+        case Failure(e): Errored(e);
+      }),
+    });
+    
+  @:from static function ofPlain<In, Out, Quality>(f:In->Out):Mapping<In, Out, Quality>
+    return new Mapping({
+      apply: function (i:Array<In>, _) return Future.sync(Converted(Stream.single(f(i[0])))),
+    });
+    
 }
 
-class StreamBase<T> implements StreamObject<T> {
+abstract Filter<T, Quality>(Regrouper<T, T, Quality>) to Regrouper<T, T, Quality> {
   
-  public function next():Future<StreamStep<T>> 
-    return Future.async(function (cb) {
-      forEach(function (x) {
-        cb(Data(x));
-        return false;
-      }).handle(function (o) switch o {
-        case Success(true): cb(End);
-        case Failure(e): cb(Fail(e));
-        default:
-      });
+  inline function new(o)
+    this = o;    
+  
+  @:from static function ofNext<T>(n:Next<T, Bool>):Filter<T, Error>
+    return new Filter({
+      apply: function (i:Array<T>, _) return n(i[0]).next(function (matched) return Converted(if (matched) Stream.single(i[0]) else Empty.make())).recover(Errored),
+    });
+    
+  @:from static function ofAsync<T, Quality>(f:T->Future<Bool>):Filter<T, Quality>
+    return new Filter({
+      apply: function (i:Array<T>, _) return f(i[0]).map(function (matched) return Converted(if (matched) Stream.single(i[0]) else Empty.make())),
+    });
+    
+  @:from static function ofSync<T>(f:T->Outcome<Bool, Error>):Filter<T, Error>
+    return new Filter({
+      apply: function (i:Array<T>, _) return Future.sync(switch f(i[0]) {
+        case Success(v): Converted(if(v)Stream.single(i[0]) else Empty.make());
+        case Failure(e): Errored(e);
+      }),
+    });
+    
+  @:from static function ofPlain<T, Quality>(f:T->Bool):Filter<T, Quality>
+    return new Filter({
+      apply: function (i:Array<T>, _) return Future.sync(Converted(if (f(i[0])) Stream.single(i[0]) else Empty.make())),
     });
   
-  public function forEach(item:T->Bool):Surprise<Bool, Error>
-    return forEachAsync(function (x) return Future.sync(item(x)));
-    
-  public function forEachAsync(item:T->Future<Bool>):Surprise<Bool, Error> 
-    return Future.sync(Success(true));
-
-  public function map<R>(item:T->R):Stream<R>
-    return new StreamMap(this, item);
-  
-  public function mapAsync<R>(item:T->Future<R>):Stream<R>
-    return new StreamMapAsync(this, item);
-  
-  public function filter(item:T->Bool):Stream<T>
-    return new StreamFilter(this, item);
-  
-  public function filterAsync(item:T->Future<Bool>):Stream<T>
-    return new StreamFilterAsync(this, item);
-    
-  public function merge<R>(item:Array<T>->Option<R>):Stream<R>
-    return new StreamMerge(this, item);
-  
-  public function mergeAsync<R>(item:Array<T>->Future<Option<R>>):Stream<R>
-    return new StreamMergeAsync(this, item);
-    
 }
 
-
-abstract StreamFilter<T>(StreamMapFilter<T, T>) to Stream<T> {
-  public inline function new(data, filter:T->Bool)
-    this = new StreamMapFilter(data, lift(filter)); 
-    
-  static public function lift<T>(filter:T->Bool):T->Maybe<T>
-    return function (x) return if (filter(x)) Maybe.Some(x) else Maybe.None();
-}
-
-abstract StreamMap<In, Out>(StreamMapFilter<In, Out>) to Stream<Out> {
-  public inline function new(data, map:In->Out)
-    this = new StreamMapFilter(data, lift(map));
-    
-  static public function lift<In, Out>(map:In->Out)
-    return function (x) return Maybe.Some(map(x));
-}
-
-abstract StreamMerge<In, Out>(StreamMapFilter<In, Out>) to Stream<Out> {
-  public inline function new(data, merger:Array<In>->Option<Out>)
-    this = new StreamMapFilter(data, lift(merger));
+class StreamBase<Item, Quality> implements StreamObject<Item, Quality> {
   
-  static public function lift<In, Out>(merger:Array<In>->Option<Out>) {
-    var buffer = [];
-    return function(x) {
-      buffer.push(x);
-      return switch merger(buffer) {
-        case Some(v):
-          buffer = []; 
-          Maybe.Some(v);
-        case None:
-          Maybe.None();
+  public var depleted(get, never):Bool;
+    function get_depleted() return false;
+  
+  var retainCount = 0;
+  
+  public function retain() {
+    retainCount++;
+    var retained = true;
+    return function () {
+      if (retained) {
+        retained = false;
+        if (--retainCount == 0)
+          destroy();
       }
     }
   }
-}
-
-class StreamMapFilter<In, Out> extends StreamBase<Out> {
-  var transformer:In->Maybe<Out>;
-  var data:Stream<In>;
-  
-  public function new(data, transformer) {
-    this.data = data;
-    this.transformer = transformer;
+      
+  public function next():Future<Step<Item, Quality>> {
+    throw 'not implemented';
+    // var item = null;
+    // return this.forEach(function(i) {
+    //   item = i;
+    //   return Finish;
+    // }).map(function(o):Step<Item, Quality> return switch o {
+    //   case Depleted: End;
+    //   case Halted(rest): Link(item, rest);
+    //   case Failed(e): Fail(e);
+    // });
   }
   
-  function chain<R>(transformer:Out->Maybe<R>):Stream<R> 
-    return new StreamMapFilter<In, R>(
-      data, 
-      function (i:In):Maybe<R>
-        return this.transformer(i).flatMap(transformer)
-    );
-    
-  override public function forEach(item:Out->Bool):Surprise<Bool, Error>
-    return data.forEach(function (x) {
-      return switch transformer(x) {
-        case v if (v.isSet()): item(v.get());
-        default: true;
-      }
-    });
+  public function regroup<Ret>(f:Regrouper<Item, Ret, Quality>):Stream<Ret, Quality> 
+    return new RegroupStream(this, f);
   
-  override public function forEachAsync(item:Out->Future<Bool>):Surprise<Bool, Error> 
-    return data.forEachAsync(function (x) {
-      return switch transformer(x) {
-        case v if (v.isSet()): item(v.get());
-        default: Future.sync(true);
-      }
-    });
+  public function map<Ret>(f:Mapping<Item, Ret, Quality>):Stream<Ret, Quality> 
+    return regroup(f);
   
-  function chainAsync<R>(transformer:Out->Future<Maybe<R>>):Stream<R>
-    return new StreamMapFilterAsync<In, R>(
-      data, 
-      function (i:In):Future<Maybe<R>>
-        return switch this.transformer(i) {
-          case v if (v.isSet()): transformer(v.get());
-          default: Future.sync(Maybe.None());
-        }
-    );
+  public function filter(f:Filter<Item, Quality>):Stream<Item, Quality>
+    return regroup(f);
   
-  override public function filterAsync(item:Out->Future<Bool>):Stream<Out>
-    return chainAsync(StreamFilterAsync.lift(item));
+  function destroy() {}  
     
-  override public function mapAsync<R>(item:Out->Future<R>):Stream<R>
-    return chainAsync(StreamMapAsync.lift(item));
+  public function append(other:Stream<Item, Quality>):Stream<Item, Quality>
+    return 
+      if (depleted) other;
+      else CompoundStream.of([this, other]);
+  
+  public function prepend(other:Stream<Item, Quality>):Stream<Item, Quality>
+    return 
+      if (depleted) other;
+      else CompoundStream.of([other, this]);
+  
+  public function blend(other:Stream<Item, Quality>):Stream<Item, Quality>
+    return 
+      if (depleted) other;
+      else new BlendStream(this, other);
     
-  override public function map<R>(item:Out->R):Stream<R>
-    return chain(StreamMap.lift(item));
-    
-  override public function filter(item:Out->Bool):Stream<Out>
-    return chain(StreamFilter.lift(item));
-}
+  public function decompose(into:Array<Stream<Item, Quality>>) 
+    if (!depleted)
+      into.push(this);
+      
+  public function idealize(rescue:Error->Stream<Item, Quality>):IdealStream<Item> 
+    return 
+      if (depleted) Empty.make();
+      else new IdealizeStream(this, rescue);
 
-abstract StreamFilterAsync<T>(StreamMapFilterAsync<T, T>) to Stream<T> {
-  public inline function new(data, filter:T->Future<Bool>)
-    this = new StreamMapFilterAsync(data, lift(filter)); 
-    
-  static public function lift<T>(filter:T->Future<Bool>)
-    return function (x) return filter(x).map(function (matches) return if (matches) Maybe.Some(x) else Maybe.None());
-}
-
-abstract StreamMapAsync<In, Out>(StreamMapFilterAsync<In, Out>) to Stream<Out> {
-  public inline function new(data, map:In->Future<Out>)
-    this = new StreamMapFilterAsync(data, lift(map));
-    
-  static public function lift<In, Out>(map:In->Future<Out>)
-    return function (x) return map(x).map(Maybe.Some);
-}
-
-abstract StreamMergeAsync<In, Out>(StreamMapFilterAsync<In, Out>) to Stream<Out> {
-  public inline function new(data, merger:Array<In>->Future<Option<Out>>)
-    this = new StreamMapFilterAsync(data, lift(merger));
-  
-  static public function lift<In, Out>(merger:Array<In>->Future<Option<Out>>) {
-    var buffer = [];
-    return function(x) {
-      buffer.push(x);
-      return merger(buffer).map(function(o) return switch o {
-        case Some(v):
-          buffer = []; 
-          Maybe.Some(v);
-        case None:
-          Maybe.None();
+  public function reduce<Safety, Result>(initial:Result, reducer:Reducer<Item, Safety, Result>):Future<Reduction<Item, Safety, Quality, Result>> 
+    return Future.async(function (cb:Reduction<Item, Safety, Quality, Result>->Void) {
+      forEach(function (item)
+        return reducer.apply(initial, item).map(
+          function (o):Handled<Safety> return switch o {
+            case Progress(v): initial = v; Resume;
+            case Crash(e): Clog(e);
+          })
+      ).handle(function (c) switch c {
+        case Failed(e): cb(Failed(e));
+        case Depleted: cb(Reduced(initial));
+        case Halted(_): throw "assert";
+        case Clogged(e, rest): cb(Crashed(e, rest));
       });
-    }
-  }
+    }, true);
+
+  public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> 
+    return throw 'not implemented';
+    
 }
 
-class StreamMapFilterAsync<In, Out> extends StreamBase<Out> {
-  var transformer:In->Future<Maybe<Out>>;
-  var data:Stream<In>;
+class IdealizeStream<Item, Quality> extends IdealStreamBase<Item> {
+  var target:Stream<Item, Quality>;
+  var rescue:Error->Stream<Item, Quality>;
   
-  public function new(data, transformer) {
-    this.data = data;
-    this.transformer = transformer;
+  public function new(target, rescue) {
+    this.target = target;
+    this.rescue = rescue;
   }
   
-  function chain<R>(transformer:Out->Maybe<R>):Stream<R> 
-    return new StreamMapFilterAsync<In, R>(
-      data, 
-      function (i:In):Future<Maybe<R>>
-        return this.transformer(i).map(function (o) return o.flatMap(transformer))
-    );
+  override function get_depleted()
+    return target.depleted;
   
-  function chainAsync<R>(transformer:Out->Future<Maybe<R>>):Stream<R>
-    return new StreamMapFilterAsync<In, R>(
-      data, 
-      function (i:In):Future<Maybe<R>>
-        return this.transformer(i).flatMap(function (o) return switch o {
-          case v if (v.isSet()): transformer(v.get());
-          default: Future.sync(Maybe.None());
+  override function next():Future<Step<Item, Noise>>
+    return target.next().flatMap(function(v) return switch v {
+      case Fail(e): rescue(e).idealize(rescue).next();
+      default: Future.sync(cast v);
+    });
+    
+  override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Noise>>
+    return 
+      Future.async(function (cb:Conclusion<Item, Safety, Noise>->Void)
+        target.forEach(handler).handle(function (end) switch end {
+          case Depleted: 
+            cb(Depleted);
+          case Halted(rest): 
+            cb(Halted(rest.idealize(rescue)));
+          case Clogged(e, at): 
+            cb(Clogged(e, at.idealize(rescue)));
+          case Failed(e): 
+            rescue(e).idealize(rescue).forEach(handler).handle(cb);
         })
-    );
+      );
   
-  override public function forEachAsync(item:Out -> Future<Bool>):Surprise<Bool, Error> {
-    return data.forEachAsync(function (x) {
-      return transformer(x).flatMap(function (x) return switch x {
-        case v if (v.isSet()): item(v.get());
-        default: Future.sync(true);
-      }, false);
+}
+
+class Single<Item, Quality> extends StreamBase<Item, Quality> {
+  var value:Lazy<Item>;
+  
+  public function new(value) 
+    this.value = value;
+    
+  override function next():Future<Step<Item, Quality>>
+    return Future.sync(Link(value.get(), Empty.make()));
+    
+  override public function forEach<Safety>(handle:Handler<Item,Safety>)
+    return handle.apply(value).map(function (step):Conclusion<Item, Safety, Quality> return switch step {
+      case BackOff:
+        Halted(this);
+      case Finish:
+        Halted(Empty.make());
+      case Resume:
+        Depleted;
+      case Clog(e):
+        Clogged(e, this);
+    });
+}
+
+abstract Handler<Item, Safety>(Item->Futuristic<Handled<Safety>>) {
+  inline function new(f) 
+    this = f;
+
+  public inline function apply(item):Future<Handled<Safety>>
+    return this(item);
+    
+  @:from static function ofSafeSync<Item>(f:Item->Handled<Noise>):Handler<Item, Noise>
+    return new Handler(function (i) return Future.sync(f(i)));
+    
+  @:from static function ofUnknownSync<Item, Q>(f:Item->Handled<Q>):Handler<Item, Q>
+    return new Handler(function (i) return Future.sync(f(i)));
+    
+  @:from static function ofSafe<Item>(f:Item->Future<Handled<Noise>>):Handler<Item, Noise>
+    return new Handler(f);
+    
+  @:from static function ofUnknown<Item, Q>(f:Item->Future<Handled<Q>>):Handler<Item, Q>
+    return new Handler(f);
+}
+
+abstract Reducer<Item, Safety, Result>(Result->Item->Futuristic<ReductionStep<Safety, Result>>) {
+  inline function new(f) 
+    this = f;
+
+  public inline function apply(res, item):Future<ReductionStep<Safety, Result>>
+    return this(res, item);
+    
+  @:from static function ofSafeSync<Item, Result>(f:Result->Item->ReductionStep<Noise, Result>):Reducer<Item, Noise, Result>
+    return new Reducer(function (res, cur) return Future.sync(f(res, cur)));
+    
+  @:from static function ofUnknownSync<Item, Q, Result>(f:Result->Item->ReductionStep<Q, Result>):Reducer<Item, Q, Result>
+    return new Reducer(function (res, cur) return Future.sync(f(res, cur)));
+    
+  @:from static function ofSafe<Item, Result>(f:Result->Item->Future<ReductionStep<Noise, Result>>):Reducer<Item, Noise, Result>
+    return new Reducer(f);
+
+  @:from static function ofPlainSync<Item, Result>(f:Result->Item->Result):Reducer<Item, Noise, Result>
+    return new Reducer(function (res, cur) return Future.sync(Progress(f(res, cur))));
+    
+  @:from static function ofUnknown<Item, Q, Result>(f:Result->Item->Future<ReductionStep<Q, Result>>):Reducer<Item, Q, Result>
+    return new Reducer(f);
+
+  @:from static function ofPromiseBased<Item, Result>(f:Result->Item->Promise<Result>)
+    return new Reducer(function (res, cur) return f(res, cur).map(function (s) return switch s {
+      case Success(r): Progress(r);
+      case Failure(e): Crash(e);
+    }));
+    
+}
+
+private class CompoundStream<Item, Quality> extends StreamBase<Item, Quality> {
+  
+  var parts:Array<Stream<Item, Quality>>;
+  
+  function new(parts)
+    this.parts = parts;
+    
+  override function get_depleted()
+    return switch parts {
+      case []: true;
+      case [s]: s.depleted;
+      default: false;
+    }
+    
+  override function next():Future<Step<Item, Quality>> {
+    return if(parts.length == 0) Future.sync(Step.End);
+    else parts[0].next().flatMap(function(v) return switch v {
+      case End if(parts.length > 1): parts[1].next();
+      case Link(v, rest):
+        var copy = parts.copy();
+        copy[0] = rest;
+        Future.sync(Link(v, new CompoundStream(copy)));
+      default: Future.sync(v);
     });
   }
+  
+  override public function decompose(into:Array<Stream<Item, Quality>>):Void 
+    for (p in parts)
+      p.decompose(into);
+  
+  override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> 
+    return Future.async(consumeParts.bind(parts, handler, _));
+      
+  static function consumeParts<Item, Quality, Safety>(parts:Array<Stream<Item, Quality>>, handler:Handler<Item, Safety>, cb:Conclusion<Item, Safety, Quality>->Void) 
+    if (parts.length == 0)
+      cb(Depleted);
+    else
+      parts[0].forEach(handler).handle(function (o) switch o {
+        case Depleted:
+          
+          consumeParts(parts.slice(1), handler, cb);
+          
+        case Halted(rest):
+          
+          parts = parts.copy();
+          parts[0] = rest;
+          cb(Halted(new CompoundStream(parts)));
+          
+        case Clogged(e, at):
+          
+          if (at.depleted)
+            parts = parts.slice(1);
+          else {
+            parts = parts.copy();
+            parts[0] = at;
+          }
+          
+          cb(Clogged(e, new CompoundStream(parts)));
+          
+        case Failed(e):
+          
+          cb(Failed(e));
+                    
+      });  
+      
+  static public function of<Item, Quality>(streams:Array<Stream<Item, Quality>>):Stream<Item, Quality> {
     
-  override public function filterAsync(item:Out->Future<Bool>):Stream<Out>
-    return chainAsync(StreamFilterAsync.lift(item));
+    var ret = [];
     
-  override public function mapAsync<R>(item:Out->Future<R>):Stream<R>
-    return chainAsync(StreamMapAsync.lift(item));
+    for (s in streams)
+      s.decompose(ret);
+      
+    return 
+      if (ret.length == 0) Empty.make();
+      else new CompoundStream(ret);
+  }      
+  
+}
+
+class FutureStream<Item, Quality> extends StreamBase<Item, Quality> {
+  var f:Future<Stream<Item, Quality>>;
+  public function new(f)
+    this.f = f;
     
-  override public function mergeAsync<R>(item:Array<Out>->Future<Option<R>>):Stream<R>
-    return chainAsync(StreamMergeAsync.lift(item));
+  override function next():Future<Step<Item, Quality>>
+    return f.flatMap(function(s) return s.next());
     
-    override public function filter(item:Out->Bool):Stream<Out>
-    return chain(StreamFilter.lift(item));
+  override public function forEach<Safety>(handler:Handler<Item, Safety>) {
+    return Future.async(function (cb) {
+      f.handle(function (s) s.forEach(handler).handle(cb));
+    });
+  }
+}
+
+class BlendStream<Item, Quality> extends Generator<Item, Quality> {
+  
+  public function new(a:Stream<Item, Quality>, b:Stream<Item, Quality>) {
+    var first = null;
     
-  override public function map<R>(item:Out->R):Stream<R>
-    return chain(StreamMap.lift(item));
+    function wait(s:Stream<Item, Quality>) {
+      return s.next().map(function(o) {
+        if(first == null) first = s;
+        return o;
+      });
+    }
     
-  override public function merge<R>(item:Array<Out>->Option<R>):Stream<R>
-    return chain(StreamMerge.lift(item));
+    var n1 = wait(a);
+    var n2 = wait(b);
+    
+    super(Future.async(function(cb) {
+      n1.first(n2).handle(function(o) switch o {
+        case End:
+          (first == a ? n2 : n1).handle(cb);
+        case Fail(e):
+          cb(Fail(e));
+        case Link(item, rest):
+          cb(Link(item, new BlendStream(rest, first == a ? b : a)));
+      });
+    }));
+    
+  }
+}
+
+
+class Generator<Item, Quality> extends StreamBase<Item, Quality> {
+  var upcoming:Future<Step<Item, Quality>>;
+  
+  function new(upcoming) 
+    this.upcoming = upcoming;
+    
+  override function next():Future<Step<Item, Quality>>
+    return upcoming;
+  
+  override public function forEach<Safety>(handler:Handler<Item, Safety>)
+    return Future.async(function (cb:Conclusion<Item, Safety, Quality>->Void) 
+      upcoming.handle(function (e) switch e {
+        case Link(v, then):
+          handler.apply(v).handle(function (s) switch s {
+            case BackOff:
+              cb(Halted(this));
+            case Finish:
+              cb(Halted(then));
+            case Resume:
+              then.forEach(handler).handle(cb);
+            case Clog(e):
+              cb(Clogged(e, this));
+          });
+        case Fail(e):
+          cb(Failed(e));
+        case End:
+          cb(Depleted);
+      }),
+  true
+    );
+  
+  static public function stream<I, Q>(step:(Step<I, Q>->Void)->Void) {
+    return new Generator(Future.async(step, true));
+  }
+    
+}
+
+enum Step<Item, Quality> {
+  Link(value:Item, next:Stream<Item, Quality>):Step<Item, Quality>;
+  Fail(e:Error):Step<Item, Error>;
+  End:Step<Item, Quality>;
+}
+
+class SignalStream<Item, Quality> extends Generator<Item, Quality> {
+	public function new(signal:Signal<Yield<Item, Quality>>) {
+		super(signal.next().map(function(o):Step<Item, Quality> return switch o {
+			case Data(data): Link(data, new SignalStream(signal));
+			case Fail(e): Fail(e);
+			case End: End;
+		}));
+	}
+}
+
+enum Yield<Item, Quality> {
+	Data(data:Item):Yield<Item, Quality>;
+	Fail(e:Error):Yield<Item, Error>;
+	End:Yield<Item, Quality>;
 }

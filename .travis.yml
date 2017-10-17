@@ -1,33 +1,23 @@
 sudo: required
 dist: trusty
 
-language: haxe
+language: node_js
+node_js: 6
 
-haxe:
-  - "3.2.1"
-  - development
-  
-matrix:
-  allow_failures:
-    - haxe: development
-    
+os:
+  - linux
+      
 install:
-  - haxelib install travix
-  - haxelib run travix install
+  - npm install
 
 script:
-  - haxelib run travix interp
-  - haxelib run travix neko
-  - haxelib run travix python
-  - haxelib run travix node
-  #- haxelib run travix flash
-  - haxelib run travix java
-  - haxelib run travix cpp
-  - haxelib run travix cs
-  - haxelib run travix php
-
-env:
-  - secure: "lB2U+nnFNdxGepvp+8lmXfoQg4AotzuXoAAZfXM66GzRQ7ynqti30FpTupgbgCsMTbhuKWDKYdt5IEDxpWolHxFJ5urozCrFd9fA3Hqdbi+iVa+MenoNMWnLUlZK0o6KymT7Jd8P6B9IrhpAk+WsGBFSoZxbYCZVPhSoRdWWvECgqTtx1JmzxOWYfCFKlbuC0hNEykR/O2R0a98C7RktR2SOB0TL18NqSnyYyASPDBm14XliL7+5ceX0iQnuySS0kXi5V/8XtiMLbeQd0GzQ1ACafIx/8v7RSxGeWE+Pr5f8PfQoUbDlk6ShtPdjon/EsrmOYh9PqJubZ0p9H/lgoJ0keBPmfYC0WjIUXeeUKsSIYWVeG39SpMLXuWO6WTKHGp1cLzDIgVrqbmOX11ZvEvtCMut6kECBd6++niggdsk95IaAZVExBYMqzXNdrSpUpkAmnvVEtCwCQ7UbEcGI2uv+RM7+OFIHx0ib/TTaZc6MdtvReuvQ/KnLP3+POQBbRAKIY5TuNmuc6X+35KXxA6rn7uHKCN4ox+XJoVLaqgDIwWI/vkAfubXOMNshbjPjXhcRLQavxshqRSLD3RFd+ArHpLBsmv+z2pMIrHrNt0VrHGCLO4J51TUREHoh2+de9jd7zZKmBE+vqUp77cXYdcb7z4pVXPnpHba3O/Qnw20="
-
-after_success:
-- haxelib run travix release
+  # - npm run --silent travix interp # runtime stack overflow
+  - npm run --silent travix neko
+  - npm run --silent travix python
+  - npm run --silent travix node
+  # - npm run --silent travix flash
+  # - npm run --silent travix java
+  - npm run --silent travix cpp
+  # - npm run --silent travix cs # gencs stack overflow, to be investigated
+  - npm run --silent travix php
+  - npm run --silent travix lua
