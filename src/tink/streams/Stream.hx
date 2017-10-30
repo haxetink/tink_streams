@@ -608,12 +608,12 @@ class BlendStream<Item, Quality> extends Generator<Item, Quality> {
     
     super(Future.async(function(cb) {
       n1.first(n2).handle(function(o) switch o {
+        case Link(item, rest):
+          cb(Link(item, new BlendStream(rest, first == a ? b : a)));
         case End:
           (first == a ? n2 : n1).handle(cb);
         case Fail(e):
           cb(Fail(e));
-        case Link(item, rest):
-          cb(Link(item, new BlendStream(rest, first == a ? b : a)));
       });
     }));
     
