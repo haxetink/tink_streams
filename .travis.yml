@@ -16,7 +16,7 @@ script:
   - npm run --silent travix python
   - npm run --silent travix node
   # - npm run --silent travix flash
-  # - npm run --silent travix java
+  - npm run --silent travix java
   - npm run --silent travix cpp
   # - npm run --silent travix cs # gencs stack overflow, to be investigated
   - npm run --silent travix php

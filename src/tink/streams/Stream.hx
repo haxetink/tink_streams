@@ -497,17 +497,44 @@ abstract Reducer<Item, Safety, Result>(Result->Item->Futuristic<ReductionStep<Sa
     
 }
 
+#if (java || cs)
+private abstract Parts<I, Q>(Array<Dynamic>) {
+  public var length(get, never):Int;
+    inline function get_length() return this.length;
+
+  public function new(parts:Array<Stream<I, Q>>)
+    this = parts;
+
+  @:arrayAccess function get(index:Int):Stream<I, Q>
+    return this[index];
+
+  @:arrayAccess function set(index:Int, value:Stream<I, Q>):Stream<I, Q>
+    return this[index] = value;
+
+  public function copy():Parts<I, Q>
+    return new Parts(cast this.copy());
+
+  public function slice(start:Int, ?end:Int):Parts<I, Q>
+    return new Parts(cast this.slice(start, end));
+  
+  @:from static function ofArray<I, Q>(a:Array<Stream<I, Q>>)
+    return new Parts<I, Q>(a);
+}
+#else
+private typedef Parts<I, Q> = Array<Stream<I, Q>>;
+#end
+
 private class CompoundStream<Item, Quality> extends StreamBase<Item, Quality> {
   
-  var parts:Array<Stream<Item, Quality>>;
+  var parts:Parts<Item, Quality>;
   
   function new(parts)
     this.parts = parts;
     
   override function get_depleted()
-    return switch parts {
-      case []: true;
-      case [s]: s.depleted;
+    return switch parts.length {
+      case 0: true;
+      case 1: parts[0].depleted;
       default: false;
     }
     
@@ -528,13 +555,13 @@ private class CompoundStream<Item, Quality> extends StreamBase<Item, Quality> {
       p.decompose(into);
   
   override public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>> 
-    return Future.async(consumeParts.bind(parts, handler, _));
+    return Future.async(consumeParts.bind(cast parts, handler, _));
       
-  static function consumeParts<Item, Quality, Safety>(parts:Array<Stream<Item, Quality>>, handler:Handler<Item, Safety>, cb:Conclusion<Item, Safety, Quality>->Void) 
+  static function consumeParts<Item, Quality, Safety>(parts:Parts<Item, Quality>, handler:Handler<Item, Safety>, cb:Conclusion<Item, Safety, Quality>->Void) 
     if (parts.length == 0)
       cb(Depleted);
     else
-      parts[0].forEach(handler).handle(function (o) switch o {
+      (parts[0]:Stream<Item, Quality>).forEach(handler).handle(function (o) switch o {
         case Depleted:
           
           consumeParts(parts.slice(1), handler, cb);
