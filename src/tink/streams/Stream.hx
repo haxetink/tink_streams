@@ -21,8 +21,27 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     return Generator.stream(function next(step) step(if(i.hasNext()) Link(i.next(), Generator.stream(next)) else End));
   }
     
+  #if cs
+  // This is to mitigate an error in the c# generator that it generates paramterized calls
+  // with type parameters which is not defined in scope
+  // similar to https://github.com/HaxeFoundation/haxe/issues/6833
+  @:from static public function dirtyFlatten<Item>(f:Future<Stream<Item, Error>>):Stream<Item, Error>
+    return new FutureStream(f);
+  #end
+    
   @:from static public function flatten<Item, Quality>(f:Future<Stream<Item, Quality>>):Stream<Item, Quality>
     return new FutureStream(f);
+  
+  #if cs
+  // This is to mitigate an error in the c# generator that it generates paramterized calls
+  // with type parameters which is not defined in scope
+  // similar to https://github.com/HaxeFoundation/haxe/issues/6833
+  @:from static public function dirtyPromise<Item>(f:Promise<Stream<Item, Error>>):Stream<Item, Error>
+    return dirtyFlatten(f.map(function (o) return switch o {
+      case Success(s): s;
+      case Failure(e): ofError(e);
+    }));
+  #end
   
   @:from static public function promise<Item, Quality>(f:Promise<Stream<Item, Quality>>):Stream<Item, Error>
     return flatten(f.map(function (o) return switch o {
