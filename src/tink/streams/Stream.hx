@@ -712,7 +712,7 @@ enum Step<Item, Quality> {
 
 class SignalStream<Item, Quality> extends Generator<Item, Quality> {
 	public function new(signal:Signal<Yield<Item, Quality>>) {
-		super(signal.next().map(function(o):Step<Item, Quality> return switch o {
+		super(signal.nextTime().map(function(o):Step<Item, Quality> return switch o {
 			case Data(data): Link(data, new SignalStream(signal));
 			case Fail(e): Fail(e);
 			case End: End;
