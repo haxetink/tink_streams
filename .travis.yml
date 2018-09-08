@@ -10,19 +10,19 @@ jobs:
         - linux
         # - osx
       install:
-        - npm i -g lix haxe-travix
+        - npm i -g lix
         - lix download
       script:
-        # - travix interp # runtime stack overflow
-        - travix neko
-        - travix python
-        - travix node
-        # - travix flash
-        - travix java
-        - travix cpp
-        # - travix cs # gencs stack overflow, to be investigated
-        - travix php
-        - travix lua
+        # - lix run travix interp # runtime stack overflow
+        - lix run travix neko
+        - lix run travix python
+        - lix run travix node
+        # - lix run travix flash
+        - lix run travix java
+        - lix run travix cpp
+        # - lix run travix cs # gencs stack overflow, to be investigated
+        - lix run travix php
+        - lix run travix lua
     
     - stage: deploy
       language: haxe
