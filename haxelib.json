@@ -12,8 +12,8 @@
 	"contributors": [
 		"back2dos"
 	],
-	"releasenote": "Fix bug in accumulator.",
-	"version": "0.2.1",
+	"releasenote": "Merged pure branch.",
+	"version": "0.3.0",
 	"url": "http://haxetink.org/tink_streams",
 	"dependencies": {
 		"tink_core": ""
