@@ -6,8 +6,10 @@ using StringTools;
 
 using tink.CoreApi;
 
-class SignalStreamTest extends TestCase {
-  function testNormal() {
+@:asserts
+class SignalStreamTest {
+  public function new() {}
+  public function testNormal() {
     var done = false;
     var a = Signal.trigger();
     var stream = new SignalStream(a.asSignal());
@@ -18,7 +20,7 @@ class SignalStreamTest extends TestCase {
     var i = 0;
     var sum = 0;
     var result = stream.forEach(function (v) {
-      assertEquals(++i, v);
+      asserts.assert(++i == v);
       sum += v;
       return Resume;
     });
@@ -30,14 +32,15 @@ class SignalStreamTest extends TestCase {
     a.trigger(Data(7));
     
     result.handle(function (x) {
-      assertEquals(Depleted, x);
-      assertEquals(15, sum);
+      asserts.assert(Depleted == x);
+      asserts.assert(15 == sum);
       done = true;
     });
-    assertTrue(done);
+    asserts.assert(done);
+    return asserts.done();
   }
   
-  function testError() {
+  public function testError() {
     var done = false;
     var a = Signal.trigger();
     var stream = new SignalStream(a.asSignal());
@@ -48,7 +51,7 @@ class SignalStreamTest extends TestCase {
     var i = 0;
     var sum = 0;
     var result = stream.forEach(function (v) {
-      assertEquals(++i, v);
+      asserts.assert(++i == v);
       sum += v;
       return Resume;
     });
@@ -58,14 +61,15 @@ class SignalStreamTest extends TestCase {
     a.trigger(Fail(new Error('Failed')));
     
     result.handle(function (x) {
-      assertTrue(x.match(Failed(_)));
-      assertEquals(15, sum);
+      asserts.assert(x.match(Failed(_)));
+      asserts.assert(15 == sum);
     done = true;
     });
-    assertTrue(done);
+    asserts.assert(done);
+    return asserts.done();
   }
   
-  function testReuse() {
+  public function testReuse() {
     var a = Signal.trigger();
     var stream = new SignalStream(a.asSignal());
     a.trigger(Data(1));
@@ -78,12 +82,12 @@ class SignalStreamTest extends TestCase {
       var i = 0;
       var sum = 0;
       stream.forEach(function (v) {
-        assertEquals(++i, v);
+        asserts.assert(++i == v);
         sum += v;
         return Resume;
       }).handle(function (x) {
-        assertEquals(Depleted, x);
-        assertEquals(6, sum);
+        asserts.assert(Depleted == x);
+        asserts.assert(6 == sum);
         count++;
       });
     }
@@ -91,6 +95,7 @@ class SignalStreamTest extends TestCase {
     iterate();
     iterate();
     iterate();
-    assertEquals(3, count);
+    asserts.assert(3 == count);
+    return asserts.done();
   }
 }

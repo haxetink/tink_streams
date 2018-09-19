@@ -8,20 +8,24 @@ using StringTools;
 
 using tink.CoreApi;
 
-class StreamTest extends TestCase {
-  function testIterator() {
+@:asserts
+class StreamTest {
+  public function new() {}
+  public function testIterator() {
     var s = Stream.ofIterator(0...100);
     var sum = 0;
     s.forEach(function (v) {
       sum += v;
       return Resume;
     }).handle(function (x) {
-      assertEquals(Depleted, x);
-      assertEquals(4950, sum);
+      asserts.assert(Depleted == x);
+      asserts.assert(4950 == sum);
+      asserts.done();
     });
+    return asserts;
   }
     
-  function testMapFilter() {
+  public function testMapFilter() {
     
     var s = Stream.ofIterator(0...100);
     
@@ -47,14 +51,15 @@ class StreamTest extends TestCase {
       return Future.sync(Resume);
     }).handle(function (x) switch x {
       case Depleted:
-        assertEquals(1840, sum);
+        asserts.assert(1840 == sum);
+        asserts.done();
       case Halted(_):
-        assertTrue(false);
+        asserts.fail('Expected "Depleted');
     });
-    
+    return asserts;
   }
     
-  function testRegroup() {
+  public function testRegroup() {
     
     var s = Stream.ofIterator(0...100);
     
@@ -66,9 +71,9 @@ class StreamTest extends TestCase {
       })
       .handle(function (x) switch x {
         case Depleted:
-          assertEquals(1980, sum);
+          asserts.assert(1980 == sum);
         case Halted(_):
-          assertTrue(false);
+          asserts.fail('Expected "Depleted"');
       });
       
     var sum = 0;
@@ -84,9 +89,9 @@ class StreamTest extends TestCase {
       })
       .handle(function (x) switch x {
         case Depleted:
-          assertEquals(3333, sum);
+          asserts.assert(3333 == sum);
         case Halted(_):
-          assertTrue(false);
+          asserts.fail('Expected "Depleted"');
       });
       
     var sum = 0;
@@ -97,10 +102,11 @@ class StreamTest extends TestCase {
       })
       .handle(function (x) switch x {
         case Depleted:
-          assertEquals(9900, sum);
+          asserts.assert(9900 == sum);
         case Halted(_):
-          assertTrue(false);
+          asserts.fail('Expected "Depleted"');
       });
     
+    return asserts.done();
   }
 }

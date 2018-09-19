@@ -1,13 +1,15 @@
 package;
 
-import haxe.unit.TestCase;
 import tink.streams.Stream;
 using StringTools;
 
 using tink.CoreApi;
 
-class BlendTest extends TestCase {
-  function testBlend() {
+@:asserts
+class BlendTest  {
+  public function new() {}
+  
+  public function testBlend() {
     var done = false;
     var a = Signal.trigger();
     var b = Signal.trigger();
@@ -19,7 +21,7 @@ class BlendTest extends TestCase {
     var i = 0;
     var sum = 0;
     var result = blended.forEach(function (v) {
-      assertEquals(++i, v);
+      asserts.assert(++i == v);
       sum += v;
       return Resume;
     });
@@ -32,14 +34,15 @@ class BlendTest extends TestCase {
     a.trigger(Data(7));
     
     result.handle(function (x) {
-      assertEquals(Depleted, x);
-      assertEquals(15, sum);
+      asserts.assert(Depleted == x);
+      asserts.assert(15 == sum);
       done = true;
     });
-    assertTrue(done);
+    asserts.assert(done);
+    return asserts.done();
   }
   
-  function testCompound() {
+  public function testCompound() {
     var done = false;
     var a = Signal.trigger();
     var b = Signal.trigger();
@@ -53,7 +56,7 @@ class BlendTest extends TestCase {
     var i = 0;
     var sum = 0;
     var result = blended.forEach(function (v) {
-      assertEquals(++i, v);
+      asserts.assert(++i == v);
       sum += v;
       return Resume;
     });
@@ -66,14 +69,15 @@ class BlendTest extends TestCase {
     a.trigger(Data(7));
     
     result.handle(function (x) {
-      assertEquals(Depleted, x);
-      assertEquals(15, sum);
+      asserts.assert(Depleted == x);
+      asserts.assert(15 == sum);
       done = true;
     });
-    assertTrue(done);
+    asserts.assert(done);
+    return asserts.done();
   }
   
-  function testError() {
+  public function testError() {
     var done = false;
     var a = Signal.trigger();
     var b = Signal.trigger();
@@ -85,7 +89,7 @@ class BlendTest extends TestCase {
     var i = 0;
     var sum = 0;
     var result = blended.forEach(function (v) {
-      assertEquals(++i, v);
+      asserts.assert(++i == v);
       sum += v;
       return Resume;
     });
@@ -96,14 +100,15 @@ class BlendTest extends TestCase {
     a.trigger(End);
     
     result.handle(function (x) {
-      assertTrue(x.match(Failed(_)));
-      assertEquals(15, sum);
+      asserts.assert(x.match(Failed(_)));
+      asserts.assert(15 == sum);
     done = true;
     });
-    assertTrue(done);
+    asserts.assert(done);
+    return asserts.done();
   }
   
-  function testReuse() {
+  public function testReuse() {
     var a = Signal.trigger();
     var b = Signal.trigger();
     var blended = new SignalStream(a.asSignal()).blend(new SignalStream(b.asSignal()));
@@ -118,12 +123,12 @@ class BlendTest extends TestCase {
       var i = 0;
       var sum = 0;
       blended.forEach(function (v) {
-        assertEquals(++i, v);
+        asserts.assert(++i == v);
         sum += v;
         return Resume;
       }).handle(function (x) {
-        assertEquals(Depleted, x);
-        assertEquals(6, sum);
+        asserts.assert(Depleted == x);
+        asserts.assert(6 == sum);
         count++;
       });
     }
@@ -131,6 +136,7 @@ class BlendTest extends TestCase {
     iterate();
     iterate();
     iterate();
-    assertEquals(3, count);
+    asserts.assert(3 == count);
+    return asserts.done();
   }
 }
