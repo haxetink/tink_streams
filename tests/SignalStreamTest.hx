@@ -1,6 +1,5 @@
 package;
 
-import haxe.unit.TestCase;
 import tink.streams.Stream;
 using StringTools;
 

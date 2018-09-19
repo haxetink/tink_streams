@@ -1,6 +1,5 @@
 package;
 
-import haxe.unit.TestCase;
 import tink.streams.IdealStream;
 import tink.streams.RealStream;
 import tink.streams.Stream;
