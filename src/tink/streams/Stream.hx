@@ -466,7 +466,7 @@ class Single<Item, Quality> extends StreamBase<Item, Quality> {
     });
 }
 
-abstract Handler<Item, Safety>(Item->Futuristic<Handled<Safety>>) {
+abstract Handler<Item, Safety>(Item->Future<Handled<Safety>>) {
   inline function new(f) 
     this = f;
 
@@ -486,7 +486,7 @@ abstract Handler<Item, Safety>(Item->Futuristic<Handled<Safety>>) {
     return new Handler(f);
 }
 
-abstract Reducer<Item, Safety, Result>(Result->Item->Futuristic<ReductionStep<Safety, Result>>) {
+abstract Reducer<Item, Safety, Result>(Result->Item->Future<ReductionStep<Safety, Result>>) {
   inline function new(f) 
     this = f;
 
