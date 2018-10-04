@@ -43,6 +43,12 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     }));
   #end
   
+  @:from static inline function promiseIdeal<Item>(f:Promise<IdealStream<Item>>):Stream<Item, Error>
+    return cast promise(f);
+  
+  @:from static inline function promiseReal<Item>(f:Promise<RealStream<Item>>):Stream<Item, Error>
+    return cast promise(f);
+  
   @:from static public function promise<Item, Quality>(f:Promise<Stream<Item, Quality>>):Stream<Item, Error>
     return flatten(f.map(function (o) return switch o {
       case Success(s): s.dirty();

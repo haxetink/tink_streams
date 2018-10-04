@@ -108,4 +108,25 @@ class StreamTest {
     
     return asserts.done();
   }
+  
+  public function casts() {
+    var pi1:Promise<IdealStream<Int>> = Promise.NEVER;
+    var pi2:Promise<Stream<Int, Noise>> = Promise.NEVER;
+    var pr1:Promise<RealStream<Int>> = Promise.NEVER;
+    var pr2:Promise<Stream<Int, Error>> = Promise.NEVER;
+    var r1:RealStream<Int>;
+    var r2:Stream<Int, Error>;
+    
+    r1 = pi1;
+    r2 = pi1;
+    r1 = pi2;
+    r2 = pi2;
+    
+    r1 = pr1;
+    r2 = pr1;
+    r1 = pr2;
+    r2 = pr2;
+    
+    return asserts.done();
+  }
 }
