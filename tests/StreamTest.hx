@@ -109,6 +109,7 @@ class StreamTest {
     return asserts.done();
   }
   
+  #if !java
   public function casts() {
     var pi1:Promise<IdealStream<Int>> = Promise.NEVER;
     var pi2:Promise<Stream<Int, Noise>> = Promise.NEVER;
@@ -129,4 +130,5 @@ class StreamTest {
     
     return asserts.done();
   }
+  #end
 }
