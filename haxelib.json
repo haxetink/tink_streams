@@ -12,8 +12,8 @@
 	"contributors": [
 		"back2dos"
 	],
-	"releasenote": "Merged pure branch.",
-	"version": "0.3.0",
+	"releasenote": "Catch up tink_core API",
+	"version": "0.3.2",
 	"url": "http://haxetink.org/tink_streams",
 	"dependencies": {
 		"tink_core": ""
