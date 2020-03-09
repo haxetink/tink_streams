@@ -127,7 +127,7 @@ private class RegroupStream<In, Out, Quality> extends CompoundStream<Out, Qualit
         }));
       case Halted(_) if(terminated): ret;
       case Halted(rest): new RegroupStream(rest, f, ret);
-      case Clogged(e, rest): cast new CloggedStream(e, cast rest);
+      case Clogged(e, _): cast new ErrorStream(e); // the regroup stream should terminate when an error occurs during the regroup process
     }));
     // TODO: get rid of those casts in this function
 

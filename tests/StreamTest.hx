@@ -57,6 +57,28 @@ class StreamTest {
     });
     return asserts;
   }
+  
+  public function testMapError() {
+    var s = Stream.ofIterator(0...100);
+    var mapped = s.map(function(v) return v % 5 == 4 ? Failure(new Error('Fail $v')) : Success(v));
+    var sum = 0;
+    
+    mapped.forEach(function(v) {
+      sum += v;
+      return Resume;
+    }).handle(function(o) switch o {
+      case Depleted:
+        asserts.fail('Expected "Failed');
+      case Failed(e):
+        asserts.assert(e.message == 'Fail 4');
+        asserts.assert(sum == 6);
+        asserts.done();
+      case Halted(_):
+        asserts.fail('Expected "Failed');
+    });
+    
+    return asserts;
+  }
     
   public function testRegroup() {
     
