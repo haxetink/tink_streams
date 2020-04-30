@@ -12,8 +12,8 @@
 	"contributors": [
 		"back2dos"
 	],
-	"releasenote": "Catch up tink_core API",
-	"version": "0.3.2",
+	"releasenote": "Fix error handling in regroup stream",
+	"version": "0.3.3",
 	"url": "http://haxetink.org/tink_streams",
 	"dependencies": {
 		"tink_core": ""
