@@ -58,6 +58,11 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
   @:from static public function ofError<Item>(e:Error):Stream<Item, Error>
     return new ErrorStream(e);
 
+  #if (nodejs && !macro)
+  @:noUsing static public inline function ofNodeStream<T>(name:String, r:js.node.stream.Readable.IReadable, ?options:{ ?onEnd:Void->Void }):RealStream<T> {
+    return tink.streams.nodejs.NodejsStream.wrap(name, r, options == null ? null : options.onEnd);
+  }
+  #end
 }
 
 enum RegroupStatus<Quality> {
