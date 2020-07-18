@@ -71,45 +71,46 @@ enum RegroupStatus<Quality> {
   Ended:RegroupStatus<Quality>;
 }
 
-enum RegroupResult<Out, Quality> {
-  Converted(data:Stream<Out, Quality>):RegroupResult<Out, Quality>;
-  Terminated(data:Option<Stream<Out, Quality>>):RegroupResult<Out, Quality>;
-  Untouched:RegroupResult<Out, Quality>;
-  Errored(e:Error):RegroupResult<Out, Error>;
+enum RegroupResult<In, Out, Quality> {
+  Converted(data:Stream<Out, Quality>, ?untouched:Array<In>):RegroupResult<In, Out, Quality>;
+  Terminated(data:Option<Stream<Out, Quality>>):RegroupResult<In, Out, Quality>;
+  Untouched:RegroupResult<In, Out, Quality>;
+  Errored(e:Error):RegroupResult<In, Out, Error>;
 }
 
 @:forward
 abstract Regrouper<In, Out, Quality>(RegrouperBase<In, Out, Quality>) from RegrouperBase<In, Out, Quality> to RegrouperBase<In, Out, Quality> {
   @:from
-  public static function ofIgnorance<In, Out, Quality>(f:Array<In>->Future<RegroupResult<Out, Quality>>):Regrouper<In, Out, Quality>
+  public static function ofIgnorance<In, Out, Quality>(f:Array<In>->Future<RegroupResult<In, Out, Quality>>):Regrouper<In, Out, Quality>
     return {apply: function(i, _) return f(i)};
   @:from
-  public static function ofIgnoranceSync<In, Out, Quality>(f:Array<In>->RegroupResult<Out, Quality>):Regrouper<In, Out, Quality>
+  public static function ofIgnoranceSync<In, Out, Quality>(f:Array<In>->RegroupResult<In, Out, Quality>):Regrouper<In, Out, Quality>
     return {apply: function(i, _) return Future.sync(f(i))};
   @:from
-  public static function ofFunc<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->Future<RegroupResult<Out, Quality>>):Regrouper<In, Out, Quality>
+  public static function ofFunc<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->Future<RegroupResult<In, Out, Quality>>):Regrouper<In, Out, Quality>
     return {apply: f};
   @:from
-  public static function ofFuncSync<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->RegroupResult<Out, Quality>):Regrouper<In, Out, Quality>
+  public static function ofFuncSync<In, Out, Quality>(f:Array<In>->RegroupStatus<Quality>->RegroupResult<In, Out, Quality>):Regrouper<In, Out, Quality>
     return {apply: function(i, s) return Future.sync(f(i, s))};
 }
 
 private typedef RegrouperBase<In, Out, Quality> = {
-  function apply(input:Array<In>, status:RegroupStatus<Quality>):Future<RegroupResult<Out, Quality>>;
+  function apply(input:Array<In>, status:RegroupStatus<Quality>):Future<RegroupResult<In, Out, Quality>>;
 }
 
 private class RegroupStream<In, Out, Quality> extends CompoundStream<Out, Quality> {
-  public function new(source:Stream<In, Quality>, f:Regrouper<In, Out, Quality>, ?prev) {
+  public function new(source:Stream<In, Quality>, f:Regrouper<In, Out, Quality>, ?prev, ?buf) {
     if(prev == null) prev = Empty.make();
+    if(buf == null) buf = [];
 
     var ret = null;
     var terminated = false;
-    var buf = [];
     var next = Stream.flatten(source.forEach(function(item) {
       buf.push(item);
       return f.apply(buf, Flowing).map(function (o):Handled<Error> return switch o {
-        case Converted(v):
+        case Converted(v, untouched):
           ret = v;
+          buf = untouched;
           Finish;
         case Terminated(v):
           ret = v.or(Empty.make);
@@ -131,7 +132,7 @@ private class RegroupStream<In, Out, Quality> extends CompoundStream<Out, Qualit
           case Errored(e): cast Stream.ofError(e);
         }));
       case Halted(_) if(terminated): ret;
-      case Halted(rest): new RegroupStream(rest, f, ret);
+      case Halted(rest): new RegroupStream(rest, f, ret, buf);
       case Clogged(e, _): cast new ErrorStream(e); // the regroup stream should terminate when an error occurs during the regroup process
     }));
     // TODO: get rid of those casts in this function

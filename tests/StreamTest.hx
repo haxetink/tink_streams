@@ -127,6 +127,31 @@ class StreamTest {
         case Halted(_):
           asserts.fail('Expected "Depleted"');
       });
+      
+    var sum = 0;
+    s.regroup(function (i:Array<Int>, status:RegroupStatus<Noise>) {
+      var batch = null;
+      
+      if(status == Ended)
+        batch = i;
+      else if(i.length > 3)
+        batch = i.splice(0, 3); // leave one item in the buf
+      
+      return if(batch != null)
+        Converted(batch.iterator(), i)
+      else
+        Untouched;
+    })
+      .idealize(null).forEach(function (v) {
+        sum += v;
+        return Resume;
+      })
+      .handle(function (x) switch x {
+        case Depleted:
+          asserts.assert(4950 == sum);
+        case Halted(_):
+          asserts.fail('Expected "Depleted"');
+      });
     
     return asserts.done();
   }
