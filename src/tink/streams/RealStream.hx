@@ -4,7 +4,7 @@ import tink.streams.Stream;
 
 using tink.CoreApi;
 
-@:forward
+@:forward @:transitive
 abstract RealStream<Item>(Stream<Item, Error>) from Stream<Item, Error> to Stream<Item, Error> {
   @:from
   public static inline function promiseOfIdealStream<Item>(p:Promise<IdealStream<Item>>):RealStream<Item>
