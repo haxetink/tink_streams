@@ -38,8 +38,6 @@ class WrappedReadable<T> {
               cb(Success((cast object:T)));
           }
         catch (e:Dynamic) {
-          trace(e);
-          js.Syntax.code('debugger');
           cb(Failure(Error.withData('Error while reading from $name', e)));
         }
       }
