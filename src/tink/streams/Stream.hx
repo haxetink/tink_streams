@@ -4,7 +4,7 @@ import tink.streams.IdealStream;
 
 using tink.CoreApi;
 
-@:forward
+@:forward @:transitive
 abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<Item, Quality> to StreamObject<Item, Quality> {
 
   public var depleted(get, never):Bool;
