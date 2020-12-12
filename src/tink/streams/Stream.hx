@@ -414,7 +414,7 @@ class StreamBase<Item, Quality> implements StreamObject<Item, Quality> {
         case Halted(_): throw "assert";
         case Clogged(e, rest): cb(Crashed(e, rest));
       });
-    } #if !tink_core_2 , true #end);
+    });
 
   public function forEach<Safety>(handler:Handler<Item, Safety>):Future<Conclusion<Item, Safety, Quality>>
     return throw 'not implemented';
@@ -707,11 +707,10 @@ class Generator<Item, Quality> extends StreamBase<Item, Quality> {
         case End:
           cb(Depleted);
       })
-      #if !tink_core_2 , true #end
     );
 
   static public function stream<I, Q>(step:(Step<I, Q>->Void)->Void) {
-    return new Generator(Future.async(step #if !tink_core_2 , true #end));
+    return new Generator(Future.async(step));
   }
 
 }

@@ -13,7 +13,7 @@ class NodejsStream<T> extends Generator<T, Error> {
         case Success(data): Link(data, new NodejsStream(target));
         case Failure(e): Fail(e);
       }));
-    } #if !tink_core_2 , true #end));
+    }));
   }
   static public function wrap(name, native, onEnd)
     return new NodejsStream(new WrappedReadable(name, native, onEnd));
