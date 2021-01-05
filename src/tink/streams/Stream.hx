@@ -22,42 +22,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
   }
   
   static public function flat<Item, Quality>(stream:Stream<Stream<Item, Quality>, Quality>):Stream<Item, Quality> {
-    var sub = null;
-    return cast Generator.stream(function next(step) {
-      var inner, outer;
-      
-      outer = function() {
-        stream.next().handle(function(s) switch s {
-          case Link(v, n):
-            sub = v;
-            stream = n;
-            inner();
-          case Fail(e):
-            step(Fail(e));
-          case End:
-            step(End);
-        });
-      }
-      
-      inner = function () {
-        sub.next().handle(function(s) switch s {
-          case Link(item, n):
-            sub = n;
-            step(Link(item, Generator.stream(next)));
-          case Fail(e):
-            step(Fail(e));
-          case End:
-            outer();
-        });
-      }
-      
-      
-      if(sub == null) {
-        outer();
-      } else {
-        inner();
-      }
-    });
+    return stream.regroup(function(arr) return Converted(arr[0]));
   }
 
   #if cs
