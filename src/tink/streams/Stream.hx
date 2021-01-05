@@ -20,6 +20,45 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
   @:from static public function ofIterator<Item, Quality>(i:Iterator<Item>):Stream<Item, Quality> {
     return Generator.stream(function next(step) step(if(i.hasNext()) Link(i.next(), Generator.stream(next)) else End));
   }
+  
+  static public function flat<Item, Quality>(stream:Stream<Stream<Item, Quality>, Quality>):Stream<Item, Quality> {
+    var sub = null;
+    return cast Generator.stream(function next(step) {
+      var inner, outer;
+      
+      outer = function() {
+        stream.next().handle(function(s) switch s {
+          case Link(v, n):
+            sub = v;
+            stream = n;
+            inner();
+          case Fail(e):
+            step(Fail(e));
+          case End:
+            step(End);
+        });
+      }
+      
+      inner = function () {
+        sub.next().handle(function(s) switch s {
+          case Link(item, n):
+            sub = n;
+            step(Link(item, Generator.stream(next)));
+          case Fail(e):
+            step(Fail(e));
+          case End:
+            outer();
+        });
+      }
+      
+      
+      if(sub == null) {
+        outer();
+      } else {
+        inner();
+      }
+    });
+  }
 
   #if cs
   // This is to mitigate an error in the c# generator that it generates paramterized calls
