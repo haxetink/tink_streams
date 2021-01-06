@@ -156,6 +156,66 @@ class StreamTest {
     return asserts.done();
   }
   
+  public function testNested() {
+    var n = Stream.ofIterator([Stream.ofIterator(0...3), Stream.ofIterator(3...6)].iterator());
+    var s = Stream.flat(n);
+    var sum = 0;
+    
+    s.forEach(function (v) {
+      sum += v;
+      return Resume;
+    }).handle(function (x) {
+      asserts.assert(Depleted == x);
+      asserts.assert(15 == sum);
+      asserts.done();
+    });
+    
+    return asserts;
+  }
+  
+  public function testNestedWithInnerError() {
+    var n = Stream.ofIterator([
+      Stream.ofIterator(0...3),
+      ofOutcomes([Success(3), Failure(new Error('dummy')), Success(5)].iterator()),
+      Stream.ofIterator(6...9),
+    ].iterator());
+    var s = Stream.flat(n);
+    var sum = 0;
+    
+    s.forEach(function (v) {
+      sum += v;
+      return Resume;
+    }).handle(function (x) {
+      asserts.assert(x.match(Failed(_)));
+      asserts.assert(6 == sum);
+      asserts.done();
+    });
+    
+    return asserts;
+  }
+  
+  public function testNestedWithOuterError() {
+    var n = ofOutcomes([
+      Success(Stream.ofIterator(0...3)),
+      Failure(new Error('dummy')),
+      Success(Stream.ofIterator(6...9)),
+    ].iterator());
+    
+    var s = Stream.flat(n);
+    var sum = 0;
+    
+    s.forEach(function (v) {
+      sum += v;
+      return Resume;
+    }).handle(function (x) {
+      asserts.assert(x.match(Failed(_)));
+      asserts.assert(3 == sum);
+      asserts.done();
+    });
+    
+    return asserts;
+  }
+  
   #if !java
   public function casts() {
     var pi1:Promise<IdealStream<Int>> = Promise.NEVER;
@@ -178,4 +238,10 @@ class StreamTest {
     return asserts.done();
   }
   #end
+  
+  
+  // maybe useful to be moved to Stream itself
+  inline function ofOutcomes<T>(i:Iterator<Outcome<T, Error>>) {
+    return Stream.ofIterator(i).map(function(v:Outcome<T, Error>) return v);
+  }
 }

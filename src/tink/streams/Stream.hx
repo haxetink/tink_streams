@@ -20,6 +20,10 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
   @:from static public function ofIterator<Item, Quality>(i:Iterator<Item>):Stream<Item, Quality> {
     return Generator.stream(function next(step) step(if(i.hasNext()) Link(i.next(), Generator.stream(next)) else End));
   }
+  
+  static public function flat<Item, Quality>(stream:Stream<Stream<Item, Quality>, Quality>):Stream<Item, Quality> {
+    return stream.regroup(function(arr) return Converted(arr[0]));
+  }
 
   #if cs
   // This is to mitigate an error in the c# generator that it generates paramterized calls
