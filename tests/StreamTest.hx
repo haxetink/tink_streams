@@ -158,7 +158,7 @@ class StreamTest {
   
   public function testNested() {
     var n = Stream.ofIterator([Stream.ofIterator(0...3), Stream.ofIterator(3...6)].iterator());
-    var s = Stream.flat(n);
+    var s = Stream.flatten(n);
     var sum = 0;
     
     s.forEach(function (v) {
@@ -179,7 +179,7 @@ class StreamTest {
       ofOutcomes([Success(3), Failure(new Error('dummy')), Success(5)].iterator()),
       Stream.ofIterator(6...9),
     ].iterator());
-    var s = Stream.flat(n);
+    var s = Stream.flatten(n);
     var sum = 0;
     
     s.forEach(function (v) {
@@ -201,7 +201,7 @@ class StreamTest {
       Success(Stream.ofIterator(6...9)),
     ].iterator());
     
-    var s = Stream.flat(n);
+    var s = Stream.flatten(n);
     var sum = 0;
     
     s.forEach(function (v) {

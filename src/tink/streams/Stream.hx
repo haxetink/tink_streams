@@ -21,7 +21,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     return Generator.stream(function next(step) step(if(i.hasNext()) Link(i.next(), Generator.stream(next)) else End));
   }
   
-  static public function flat<Item, Quality>(stream:Stream<Stream<Item, Quality>, Quality>):Stream<Item, Quality> {
+  static public function flatten<Item, Quality>(stream:Stream<Stream<Item, Quality>, Quality>):Stream<Item, Quality> {
     return stream.regroup(function(arr) return Converted(arr[0]));
   }
 
@@ -29,11 +29,11 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
   // This is to mitigate an error in the c# generator that it generates paramterized calls
   // with type parameters which is not defined in scope
   // similar to https://github.com/HaxeFoundation/haxe/issues/6833
-  @:from static public function dirtyFlatten<Item>(f:Future<Stream<Item, Error>>):Stream<Item, Error>
+  @:from static public function dirtyFuture<Item>(f:Future<Stream<Item, Error>>):Stream<Item, Error>
     return new FutureStream(f);
   #end
 
-  @:from static public function flatten<Item, Quality>(f:Future<Stream<Item, Quality>>):Stream<Item, Quality>
+  @:from static public function future<Item, Quality>(f:Future<Stream<Item, Quality>>):Stream<Item, Quality>
     return new FutureStream(f);
 
   #if cs
@@ -41,7 +41,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
   // with type parameters which is not defined in scope
   // similar to https://github.com/HaxeFoundation/haxe/issues/6833
   @:from static public function dirtyPromise<Item>(f:Promise<Stream<Item, Error>>):Stream<Item, Error>
-    return dirtyFlatten(f.map(function (o) return switch o {
+    return dirtyFuture(f.map(function (o) return switch o {
       case Success(s): s;
       case Failure(e): ofError(e);
     }));
@@ -54,7 +54,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     return cast promise(f);
 
   @:from static public function promise<Item, Quality>(f:Promise<Stream<Item, Quality>>):Stream<Item, Error>
-    return flatten(f.map(function (o) return switch o {
+    return future(f.map(function (o) return switch o {
       case Success(s): s.dirty();
       case Failure(e): ofError(e);
     }));
@@ -109,7 +109,7 @@ private class RegroupStream<In, Out, Quality> extends CompoundStream<Out, Qualit
 
     var ret = null;
     var terminated = false;
-    var next = Stream.flatten(source.forEach(function(item) {
+    var next = Stream.future(source.forEach(function(item) {
       buf.push(item);
       return f.apply(buf, Flowing).map(function (o):Handled<Error> return switch o {
         case Converted(v, untouched):
@@ -129,7 +129,7 @@ private class RegroupStream<In, Out, Quality> extends CompoundStream<Out, Qualit
       case Failed(e): Stream.ofError(e);
       case Depleted if(buf.length == 0): Empty.make();
       case Depleted:
-        Stream.flatten(f.apply(buf, Ended).map(function(o) return switch o {
+        Stream.future(f.apply(buf, Ended).map(function(o) return switch o {
           case Converted(v): v;
           case Terminated(v): v.or(Empty.make);
           case Untouched: Empty.make();
