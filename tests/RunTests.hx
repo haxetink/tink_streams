@@ -17,7 +17,7 @@ class RunTests {
       // new StreamTest(),
       // new BlendTest(),
       // new NextTest(),
-      // new SignalStreamTest(),
+      new SignalStreamTest(),
     ])).handle(Runner.exit);
   }
 

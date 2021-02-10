@@ -34,6 +34,9 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
 
   @:from static public function promise<T>(p:Promise<Stream<T, Error>>):Stream<T, Error>
     return new PromiseStream(p);
+
+  @:from static public function ofError<T>(e:Error):Stream<T, Error>
+    return promise(e);
 }
 
 private class PromiseStream<Item> implements StreamObject<Item, Error> {
@@ -104,7 +107,7 @@ abstract Step<Result>(Null<Result>) from Null<Result> {
       #end
 }
 
-typedef Consume<Item, Result> = (item:Item, done:Result->Step<Result>)->Null<Future<Step<Result>>>;
+private typedef Consume<Item, Result> = (item:Item, done:Result->Step<Result>)->Null<Future<Step<Result>>>;
 
 abstract Consumer<Item, Result>(Consume<Item, Result>) from Consume<Item, Result> {
   public inline function apply(item, done):Future<Step<Result>>
@@ -114,7 +117,7 @@ abstract Consumer<Item, Result>(Consume<Item, Result>) from Consume<Item, Result
     }
 }
 
-class Empty<Item, Quality> implements StreamObject<Item, Quality> {
+private class Empty<Item, Quality> implements StreamObject<Item, Quality> {
 
   static final INST:StreamObject<Dynamic, Dynamic> = new Empty();
 
@@ -124,7 +127,7 @@ class Empty<Item, Quality> implements StreamObject<Item, Quality> {
     return Done;
 }
 
-class StreamPair<Item, Quality> implements StreamObject<Item, Quality> {
+private class StreamPair<Item, Quality> implements StreamObject<Item, Quality> {
   final l:Stream<Item, Quality>;
   final r:Stream<Item, Quality>;
 
@@ -146,6 +149,36 @@ class StreamPair<Item, Quality> implements StreamObject<Item, Quality> {
 
       return ret;
     });
+}
+
+private typedef Selector<In, Out, Quality> = In->Surprise<Option<Out>, Quality>;
+
+private class SelectStream<In, Out, Quality> implements StreamObject<Out, Quality> {
+
+  final source:Stream<In, Quality>;
+  final selector:Selector<In, Out, Quality>;
+
+  public function new(source, selector) {
+    this.source = source;
+    this.selector = selector;
+  }
+
+  public function forEach<Result>(f:Consumer<Out, Result>):Future<IterationResult<Out, Result, Quality>>
+    return
+      source.forEach(
+        (item, done) -> selector(item).flatMap(o -> switch o {
+          case Success(data):
+            switch data {
+              case Some(v):
+                f.apply(v, done).map(Success);
+              case None:
+                Success(null);
+            }
+          case Failure(failure):
+            Failure(failure);
+        })
+      );
+
 }
 
 class MapStream<In, Out, Quality> implements StreamObject<Out, Quality> {

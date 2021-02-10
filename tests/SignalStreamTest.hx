@@ -15,30 +15,30 @@ class SignalStreamTest {
     a.trigger(Data(1));
     a.trigger(Data(2));
     a.trigger(Data(3));
-    
+
     var i = 0;
     var sum = 0;
-    var result = stream.forEach(function (v) {
+    var result = stream.forEach(function (v, _) {
       asserts.assert(++i == v);
       sum += v;
-      return Resume;
+      return null;
     });
-    
+
     a.trigger(Data(4));
     a.trigger(Data(5));
     a.trigger(End);
     a.trigger(Data(6));
     a.trigger(Data(7));
-    
+
     result.handle(function (x) {
-      asserts.assert(Depleted == x);
-      asserts.assert(15 == sum);
+      asserts.assert(x == Done);
+      asserts.assert(sum == 15);
       done = true;
     });
     asserts.assert(done);
     return asserts.done();
   }
-  
+
   public function testError() {
     var done = false;
     var a = Signal.trigger();
@@ -46,28 +46,28 @@ class SignalStreamTest {
     a.trigger(Data(1));
     a.trigger(Data(2));
     a.trigger(Data(3));
-    
+
     var i = 0;
     var sum = 0;
-    var result = stream.forEach(function (v) {
+    var result = stream.forEach(function (v, _) {
       asserts.assert(++i == v);
       sum += v;
-      return Resume;
+      return null;
     });
-    
+
     a.trigger(Data(4));
     a.trigger(Data(5));
     a.trigger(Fail(new Error('Failed')));
-    
+
     result.handle(function (x) {
-      asserts.assert(x.match(Failed(_)));
+      asserts.assert(x.match(Stopped(_, Failure(_))));
       asserts.assert(15 == sum);
     done = true;
     });
     asserts.assert(done);
     return asserts.done();
   }
-  
+
   public function testReuse() {
     var a = Signal.trigger();
     var stream = new SignalStream(a.asSignal());
@@ -75,22 +75,22 @@ class SignalStreamTest {
     a.trigger(Data(2));
     a.trigger(Data(3));
     a.trigger(End);
-    
+
     var count = 0;
     function iterate() {
       var i = 0;
       var sum = 0;
-      stream.forEach(function (v) {
+      stream.forEach(function (v, _) {
         asserts.assert(++i == v);
         sum += v;
-        return Resume;
+        return null;
       }).handle(function (x) {
-        asserts.assert(Depleted == x);
-        asserts.assert(6 == sum);
+        asserts.assert(x == Done);
+        asserts.assert(sum == 6);
         count++;
       });
     }
-    
+
     iterate();
     iterate();
     iterate();
