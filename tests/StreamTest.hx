@@ -13,9 +13,9 @@ class StreamTest {
   public function testIterator() {
     var s = Stream.ofIterator(0...100);
     var sum = 0;
-    s.forEach(function (v, _) {
+    s.forEach(v -> {
       sum += v;
-      return null;
+      None;
     }).handle(function (x) {
       asserts.assert(Done == x);
       asserts.assert(4950 == sum);
@@ -40,45 +40,43 @@ class StreamTest {
 
     var sum = 0;
 
-    s.forEach((v, _) -> null).handle(function (c) switch c {
+    s.forEach(v -> None).handle(function (c) switch c {
       case Failed(_):
       default:
     });
 
-    s.idealize(null).forEach(function (v) {
+    s.idealize(null).forEach(v -> {
       sum += v;
-      return Future.sync(Resume);
-    }).handle(function (x) switch x {
-      case Depleted:
+      return None;
+    }).handle(x -> switch x {
+      case Done:
         asserts.assert(1840 == sum);
         asserts.done();
-      case Halted(_):
+      case Stopped(_):
         asserts.fail('Expected "Depleted');
     });
     return asserts;
   }
 
-  // public function testMapError() {
-  //   var s = Stream.ofIterator(0...100);
-  //   var mapped = s.map(function(v) return v % 5 == 4 ? Failure(new Error('Fail $v')) : Success(v));
-  //   var sum = 0;
+  public function testMapError() {
+    var s = Stream.ofIterator(0...100);
+    var mapped = s.map(function(v) return v % 5 == 4 ? Failure(new Error('Fail $v')) : Success(v));
+    var sum = 0;
 
-  //   mapped.forEach(function(v) {
-  //     sum += v;
-  //     return Resume;
-  //   }).handle(function(o) switch o {
-  //     case Depleted:
-  //       asserts.fail('Expected "Failed');
-  //     case Failed(e):
-  //       asserts.assert(e.message == 'Fail 4');
-  //       asserts.assert(sum == 6);
-  //       asserts.done();
-  //     case Halted(_):
-  //       asserts.fail('Expected "Failed');
-  //   });
+    mapped.forEach(v -> {
+      sum += v;
+      return None;
+    }).handle(function(o) switch o {
+      case Failed(_, e):
+        asserts.assert(e.message == 'Fail 4');
+        asserts.assert(sum == 6);
+        asserts.done();
+      default:
+        asserts.fail('Expected "Failed');
+    });
 
-  //   return asserts;
-  // }
+    return asserts;
+  }
 
   // public function testRegroup() {
 

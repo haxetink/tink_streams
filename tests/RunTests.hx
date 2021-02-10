@@ -14,7 +14,7 @@ class RunTests {
     #end
 
     Runner.run(TestBatch.make([
-      // new StreamTest(),
+      new StreamTest(),
       // new BlendTest(),
       // new NextTest(),
       new SignalStreamTest(),

@@ -7,8 +7,8 @@ using tink.CoreApi;
 typedef RealStream<Item> = Stream<Item, tink.core.Error>;
 
 class RealStreamTools {
-  // static public function idealize<T>(s:RealStream<Item>)
-
+  static public function idealize<Item>(s:RealStream<Item>, rescue:(error:Error)->RealStream<Item>):IdealStream<Item>
+    return cast s;
 }
 
 // private class IdealizedStream<Item> implements StreamObject<Item, Noise> {

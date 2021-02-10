@@ -18,10 +18,10 @@ class SignalStreamTest {
 
     var i = 0;
     var sum = 0;
-    var result = stream.forEach(function (v, _) {
+    var result = stream.forEach(v -> {
       asserts.assert(++i == v);
       sum += v;
-      return null;
+      None;
     });
 
     a.trigger(Data(4));
@@ -49,10 +49,10 @@ class SignalStreamTest {
 
     var i = 0;
     var sum = 0;
-    var result = stream.forEach(function (v, _) {
+    var result = stream.forEach(v -> {
       asserts.assert(++i == v);
       sum += v;
-      return null;
+      None;
     });
 
     a.trigger(Data(4));
@@ -80,10 +80,10 @@ class SignalStreamTest {
     function iterate() {
       var i = 0;
       var sum = 0;
-      stream.forEach(function (v, _) {
+      stream.forEach(v -> {
         asserts.assert(++i == v);
         sum += v;
-        return null;
+        None;
       }).handle(function (x) {
         asserts.assert(x == Done);
         asserts.assert(sum == 6);
