@@ -1,6 +1,6 @@
--D tink_unittest=0.6.2
-# @install: lix --silent download "gh://github.com/haxetink/tink_unittest#0b0c7de647e522ca42662e2cdfc59e21ed8d4eb4" into tink_unittest/0.6.2/github/0b0c7de647e522ca42662e2cdfc59e21ed8d4eb4
 -lib tink_syntaxhub
 -lib tink_testrunner
--cp ${HAXE_LIBCACHE}/tink_unittest/0.6.2/github/0b0c7de647e522ca42662e2cdfc59e21ed8d4eb4/src
---macro tink.unit.AssertionBufferInjector.use()
+-cp ${SCOPE_DIR}/../unittest/src
+-D tink_unittest=0.7.0
+${SCOPE_DIR}/../unittest/extraParams.hxml
+--macro Sys.println("haxe_libraries/tink_unittest.hxml:4: [Warning] Using dev version of library tink_unittest")
