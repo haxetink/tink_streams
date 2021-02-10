@@ -18,6 +18,14 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     return new AsyncLinkStream(rec());
   }
 
+  public function filter(f:Item->Return<Bool, Quality>):Stream<Item, Quality> {
+    return this;
+  }
+
+  public function map<R>(f:Item->Return<R, Quality>):Stream<R, Quality> {
+    return Stream.empty();
+  }
+
   static public inline function empty<Item, Quality>():Stream<Item, Quality>
     return @:privateAccess
       #if cs
