@@ -251,6 +251,36 @@ class StreamTest {
   // }
   // #end
 
+  @:include public function laziness() {
+    var triggers = [];
+    var s = Stream.generate(() -> {
+      var t = new FutureTrigger<Int>();
+      triggers.push(t);
+      t.asFuture().map(Data);
+    });
+
+    var res = s.forEach(t -> if (t < 20) None else Some(t)).eager();
+
+    for (i in 0...21) {
+      asserts.assert(triggers.length == i + 1);
+      asserts.assert(res.status.match(EagerlyAwaited));
+      triggers[i].trigger(i);
+    }
+
+    asserts.assert(res.status.match(Ready(_.get() => Stopped(_, 20))));
+
+    var res = s.forEach(t -> if (t < 40) None else Some(t)).eager();
+
+    for (i in 21...41) {
+      asserts.assert(triggers.length == i + 1);
+      asserts.assert(res.status.match(EagerlyAwaited));
+      triggers[i].trigger(i);
+    }
+
+    asserts.assert(res.status.match(Ready(_.get() => Stopped(_, 40))));
+
+    return asserts.done();
+  }
 
   // maybe useful to be moved to Stream itself
   inline function ofOutcomes<T>(i:Iterator<Outcome<T, Error>>) {

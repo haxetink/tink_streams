@@ -264,7 +264,7 @@ private class SelectStream<In, Out, Quality> implements StreamObject<Out, Qualit
     );
 }
 
-class Grouped<Item, Quality> implements StreamObject<Item, Quality> {
+private class Grouped<Item, Quality> implements StreamObject<Item, Quality> {
   final source:Stream<Array<Item>, Quality>;
 
   public function new(source)
