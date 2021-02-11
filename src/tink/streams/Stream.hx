@@ -30,15 +30,12 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
       case Failed(_, e): Fail(e);
     });
 
-  public function select<R>(selector):Stream<R, Quality> {
+  public function select<R>(selector):Stream<R, Quality>
     return
-      if (Type.getClass(this) == SelectStream) {
+      if (Type.getClass(this) == SelectStream)
         SelectStream.chain(cast this, selector);
-        // var s:SelectStream<Item, Quality> = cast this;
-        // new SelectStream(s.source, SelectStream.chain(s.selector, selector));
-      }
-      else new SelectStream(this, selector);
-  }
+      else
+        new SelectStream(this, selector);
 
   public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
     return new Future(trigger -> {
@@ -206,26 +203,8 @@ private typedef Selector<In, Out, Quality> = In->Return<Option<Out>, Quality>;
 
 private class SelectStream<In, Out, Quality> implements StreamObject<Out, Quality> {
 
-  static function chainSelectors<In, Between, Out, Quality>(
-    a:Selector<In, Between, Quality>,
-    b:Selector<Between, Out, Quality>
-  ):Selector<In, Out, Quality>
-    return v -> a(v).flatMap(o -> (switch o {
-      case Success(o):
-        switch o {
-          case Some(v): b(v);
-          case None: Success(None);
-        }
-      case Failure(e): Failure(e);
-    }:Return<Option<Out>, Quality>).asFuture());
   final source:Stream<In, Quality>;
   final selector:Selector<In, Out, Quality>;
-
-  static public function chain<In, Between, Out, Quality>(
-    a:SelectStream<In, Between, Quality>,
-    b:Selector<Between, Out, Quality>
-  )
-    return new SelectStream(a.source, chainSelectors(a.selector, b));
 
   public function new(source, selector) {
     this.source = source;
@@ -257,6 +236,32 @@ private class SelectStream<In, Out, Quality> implements StreamObject<Out, Qualit
         case Failed(rest, e) | Stopped(rest, Failure(e)):
           cast Failed(cast continued(cast rest), e);// GADT bug
       });
+
+
+  static public function chain<In, Between, Out, Quality>(
+    a:SelectStream<In, Between, Quality>,
+    b:Selector<Between, Out, Quality>
+  )
+    return new SelectStream(a.source, chainSelectors(a.selector, b));
+
+  static function chainSelectors<In, Between, Out, Quality>(
+    a:Selector<In, Between, Quality>,
+    b:Selector<Between, Out, Quality>
+  ):Selector<In, Out, Quality>
+    return v -> new Future(
+      trigger -> {
+        final inner = new CallbackLinkRef();
+
+        a(v).handle(o -> switch o {
+          case Success(None):
+            trigger(Success(None));
+          case Success(Some(v)):
+            inner.link = b(v).handle(trigger);
+          case Failure(e):
+            trigger(Failure(e));
+        }).join(inner);
+      }
+    );
 }
 
 class Grouped<Item, Quality> implements StreamObject<Item, Quality> {
