@@ -251,12 +251,55 @@ class StreamTest {
   // }
   // #end
 
-  @:include public function laziness() {
+  public function suspend() {
+
     var triggers = [];
     var s = Stream.generate(() -> {
-      var t = new FutureTrigger<Int>();
+
+      var t = new FutureTrigger<Null<Int>>();
       triggers.push(t);
-      t.asFuture().map(Data);
+      t.asFuture().map(v -> if (v == null) Yield.End else Data(v));
+    });
+
+    var log = [];
+    var res = s.forEach(v -> { log.push(v); None; });
+    var active = res.handle(function () {});
+
+    function progress()
+      triggers[triggers.length - 1].trigger(triggers.length - 1);
+
+    for (i in 0...5)
+      progress();
+
+    active.cancel();
+
+    progress();
+
+    res.eager();
+    triggers[triggers.length - 1].trigger(null);
+    asserts.assert(res.status.match(Ready(_.get() => Done)));
+
+    asserts.assert(log.join(',') == [for (i in 0...triggers.length - 1) i].join(','));
+
+    return asserts.done();
+  }
+
+  static public var verbose = false;
+
+  public function laziness() {
+
+    var triggers = [],
+        counter = 0;
+    var s = Stream.generate(() -> {
+
+      var t = switch triggers[counter] {
+        case null: triggers[counter] = new FutureTrigger<Null<Int>>();
+        case v: v;
+      }
+
+      counter++;
+
+      t.asFuture().map(v -> if (v == null) Yield.End else Data(v));
     });
 
     var res = s.forEach(t -> if (t < 20) None else Some(t)).eager();
@@ -278,6 +321,34 @@ class StreamTest {
     }
 
     asserts.assert(res.status.match(Ready(_.get() => Stopped(_, 40))));
+
+    var log = [];
+    var res = s.forEach(t -> { log.push(t); None; });
+    var active:CallbackLink = null;
+
+    active = res.handle(function () {});
+
+    for (i in 0...5) {
+      asserts.assert(triggers.length == 42 + i);
+      triggers[triggers.length - 1].trigger(triggers.length - 1);
+    }
+
+    active.cancel();
+
+    for (i in 0...5) {
+      var t = new FutureTrigger();
+      t.trigger(triggers.length - 1);
+      triggers.push(t);
+    }
+
+    var t = new FutureTrigger();
+    t.trigger(null);
+    triggers.push(t);
+
+    res.eager();
+
+    asserts.assert(res.status.match(Ready(_.get() => Done)));
+    asserts.assert(log.join(',') == [for (i in 0...triggers.length - 2) i].join(','));
 
     return asserts.done();
   }

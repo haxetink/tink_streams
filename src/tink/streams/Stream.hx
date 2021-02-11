@@ -38,10 +38,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
         new SelectStream(this, selector);
 
   public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
-    return new Future(trigger -> {
-      this.forEach(f).handle(trigger);
-    });
-
+    return this.forEach(f);
   public function filter(f:Item->Return<Bool, Quality>):Stream<Item, Quality>
     return select(i -> f(i).map(o -> switch o {
       case Success(matched): Success(if (matched) Some(i) else None);
@@ -329,7 +326,8 @@ private class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quali
   public function new(link)
     this.link = link;
 
-  public function forEach<Result>(f:Consumer<Item, Result>)
+  public function forEach<Result>(f:Consumer<Item, Result>) {
+    var pos = link;
     return new Future<IterationResult<Item, Result, Quality>>(trigger -> {
       final wait = new CallbackLinkRef();
       var streaming = true;
@@ -337,11 +335,11 @@ private class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quali
         streaming = false;
         trigger(v);
       }
-      function loop(cur:AsyncLink<Item, Quality>) {
+      function loop() {
         while (streaming) {
-          switch cur.status {
-            case Ready(result):
-              switch result.get() {
+          switch pos.status {
+            case Ready(_.get() => result):
+              switch result {
                 case Fin(v):
                   yield(switch v {
                     case null: Done;
@@ -353,24 +351,25 @@ private class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quali
                     case Some(v):
                       yield(Stopped(new AsyncLinkStream(tail), v));
                     case None:
-                      if (sync) cur = tail;
-                      else loop(tail);
+                      pos = tail;
+                      if (!sync) loop();
                   });
                   if (wait.link == null) continue;
               }
             default:
-              wait.link = cur.handle(Helper.noop);
-              if (cur.status.match(Ready(_)))
+              wait.link = pos.handle(Helper.noop);
+              if (pos.status.match(Ready(_)))
                 continue;
               else
-                wait.link = Helper.swapHandler(cur, wait, _ -> loop(cur));// this is very lazy
+                wait.link = Helper.swapHandler(pos, wait, loop);// this is very lazy
           }
           break;
         }
       }
-      loop(link);
+      loop();
       return wait;
     });
+  }
 }
 
 private typedef SyncLink<Item, Quality> = Lazy<LinkKind<Item, Quality, SyncLink<Item, Quality>>>;
