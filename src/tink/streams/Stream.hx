@@ -74,28 +74,28 @@ enum Step<Item, Quality> {
   End:Step<Item, Quality>;
 }
 
-private class FlattenStream<Item> implements StreamObject<Item, Error> {
-  final source:Stream<Stream<Item, Error>, Error>;
+private class FlattenStream<Item, Quality> implements StreamObject<Item, Quality> {
+  final source:Stream<Stream<Item, Quality>, Quality>;
 
   public function new(source)
     this.source = source;
 
-  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Error>>
+  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
     return
       source.forEach(child -> child.forEach(f).map(r -> switch r {
         case Done: None;
         case Stopped(rest, result): Some(new Pair(rest, Success(result)));
-        case Failed(rest, e): Some(new Pair(rest, Failure(e)));
+        case Failed(rest, e): Some(new Pair(cast rest, Failure(e)));
       })).map(r -> switch r {
         case Done: Done;
         case Stopped(rest, result):
           var rest = new StreamPair(result.a, new FlattenStream(rest));
           switch result.b {
             case Success(data): Stopped(rest, data);
-            case Failure(failure): Failed(rest, failure);
+            case Failure(failure): cast Failed(cast rest, failure);
           }
         case Failed(rest, e):
-          Failed(new FlattenStream(rest), e);
+          cast Failed(new FlattenStream(rest), e);
       });
 }
 
