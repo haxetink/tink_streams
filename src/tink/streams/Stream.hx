@@ -19,13 +19,20 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     return new AsyncLinkStream(rec());
   }
 
-  public function filter(f:Item->Return<Bool, Quality>):Stream<Item, Quality> {
-    return this;
-  }
+  public function select<R>(selector):Stream<R, Quality>
+    return new SelectStream(this, selector);
 
-  public function map<R>(f:Item->Return<R, Quality>):Stream<R, Quality> {
-    return Stream.empty();
-  }
+  public function filter(f:Item->Return<Bool, Quality>):Stream<Item, Quality>
+    return select(i -> f(i).map(o -> switch o {
+      case Success(matched): Success(if (matched) Some(i) else None);
+      case Failure(failure): Failure(failure);
+    }));
+
+  public function map<R>(f:Item->Return<R, Quality>):Stream<R, Quality>
+    return select(i -> f(i).map(r -> switch r {
+      case Success(data): Success(Some(data));// BUG: Success(data) compiles
+      case Failure(failure): Failure(failure);
+    }));
 
   static public inline function empty<Item, Quality>():Stream<Item, Quality>
     return @:privateAccess
@@ -46,6 +53,34 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
 
   @:from static public function ofError<T>(e:Error):Stream<T, Error>
     return promise(e);
+
+  static public function flatten<T>(s:Stream<Stream<T, Error>, Error>):Stream<T, Error>
+    return new FlattenStream(s);
+}
+
+private class FlattenStream<Item> implements StreamObject<Item, Error> {
+  final source:Stream<Stream<Item, Error>, Error>;
+
+  public function new(source)
+    this.source = source;
+
+  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Error>>
+    return
+      source.forEach(function (child) return child.forEach(f).map(function (r) return switch r {
+        case Done: None;
+        case Stopped(rest, result): Some(new Pair(rest, Success(result)));
+        case Failed(rest, e): Some(new Pair(rest, Failure(e)));
+      })).map(function (r) return switch r {
+        case Done: Done;
+        case Stopped(rest, result):
+          var rest = new StreamPair(result.a, new FlattenStream(rest));
+          switch result.b {
+            case Success(data): Stopped(rest, data);
+            case Failure(failure): Failed(rest, failure);
+          }
+        case Failed(rest, e):
+          Failed(new FlattenStream(rest), e);
+      });
 }
 
 private class PromiseStream<Item> implements StreamObject<Item, Error> {
@@ -88,7 +123,6 @@ enum IterationResult<Item, Result, Quality> {
   Stopped(rest:Stream<Item, Quality>, result:Result):IterationResult<Item, Result, Quality>;
 }
 
-
 interface StreamObject<Item, Quality> {
   function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>;
 }
@@ -117,16 +151,7 @@ abstract Step<Result>(Null<Result>) from Null<Result> {
       #end
 }
 
-private typedef Consume<Item, Result> = (item:Item)->Future<Option<Result>>;
-
-@:callable
-abstract Consumer<Item, Result>(Consume<Item, Result>) from Consume<Item, Result> {
-  // public inline function apply(item, done):Future<Step<Result>>
-  //   return switch this(item, done) {
-  //     case null: Future.NOISE;
-  //     case v: v;
-  //   }
-}
+typedef Consumer<Item, Result> = (item:Item)->Future<Option<Result>>;
 
 private class Empty<Item, Quality> implements StreamObject<Item, Quality> {
 
@@ -164,32 +189,39 @@ private class StreamPair<Item, Quality> implements StreamObject<Item, Quality> {
     });
 }
 
-// private typedef Selector<In, Out, Quality> = In->Surprise<Option<Out>, Quality>;
+private typedef Selector<In, Out, Quality> = In->Return<Option<Out>, Quality>;
 
-// private class SelectStream<In, Out, Quality> implements StreamObject<Out, Quality> {
+private class SelectStream<In, Out, Quality> implements StreamObject<Out, Quality> {
 
-//   final source:Stream<In, Quality>;
-//   final selector:Selector<In, Out, Quality>;
+  final source:Stream<In, Quality>;
+  final selector:Selector<In, Out, Quality>;
 
-//   public function new(source, selector) {
-//     this.source = source;
-//     this.selector = selector;
-//   }
+  public function new(source, selector) {
+    this.source = source;
+    this.selector = selector;
+  }
 
-//   public function forEach<Result>(f:Consumer<Out, Result>):Future<IterationResult<Out, Result, Quality>>
-//     return
-//       source.forEach(
-//         item -> selector(item).flatMap(o -> switch o {
-//           case Success(data):
-//           case Failure(failure):
-//         })
-//       );
-
-// }
+  public function forEach<Result>(f:Consumer<Out, Result>):Future<IterationResult<Out, Result, Quality>>
+    return
+      source.forEach(
+        item -> selector(item).flatMap(o -> switch o {
+          case Success(None): None;
+          case Success(Some(v)):
+            f(v).map(o -> o.map(Success));
+          case Failure(e):
+            Some(Failure(e));
+        })
+      ).map(res -> switch res {
+        case Done: Done;
+        case Stopped(rest, Success(result)):
+          Stopped(rest, result);
+        case Failed(rest, e) | Stopped(rest, Failure(e)): cast Failed(rest, e);// GADT bug
+      });
+}
 
 // class MapStream<In, Out, Quality> implements StreamObject<Out, Quality> {
 //   final source:Stream<In, Quality>;
-//   final transform:In->Future<Out>;
+//   final transform:In->Return<Out, Quality>;
 
 //   public function new(source, transform) {
 //     this.source = source;
@@ -197,7 +229,17 @@ private class StreamPair<Item, Quality> implements StreamObject<Item, Quality> {
 //   }
 
 //   public function forEach<Result>(f:Consumer<Out, Result>):Future<IterationResult<Out, Result, Quality>>
-//     return source.forEach((item, done) -> transform(item).flatMap(out -> f(out, done)));
+//     return source.forEach(item -> transform(item).flatMap(out -> switch out {
+//       case Success(data): f(data).map(o -> switch o {
+//         case Some(v): Some(Success(v));
+//         case None: None;
+//       });
+//       case Failure(e): trace(e); Some(Failure(e));
+//     })).map(res -> switch res {
+//         case Done: Done;
+//         case Stopped(rest, Success(result)): Stopped(rest, result);
+//         case Failed(rest, e) | Stopped(rest, Failure(e)): cast Failed(rest, e);
+//     });
 // }
 
 // class Grouped<Item, Quality> implements StreamObject<Item, Quality> {
@@ -254,7 +296,7 @@ class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
     this.link = link;
 
   public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
-    return new Future(yield -> {
+    return new Future((yield:(res:IterationResult<Item, Result, Quality>)->Void) -> {
       final wait = new CallbackLinkRef();
       function loop(cur:AsyncLink<Item, Quality>) {
         while (true) {
@@ -264,7 +306,8 @@ class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
                 case Fin(v):
                   yield(switch v {
                     case null: Done;
-                    case error: Stopped(Stream.empty(), Failure(error));
+                    case error:
+                      cast Failed(Stream.empty(), cast error);// GADT bug: what's worse, this compiles: Stopped(Stream.empty(), Failure(error)) compiles
                   });
                 case Cons(item, tail):
                   function process(progress:Future<Option<Result>>) {
@@ -272,7 +315,7 @@ class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
                       case Ready(result):
                         switch result.get() {
                           case Some(v):
-                            yield(Stopped(new AsyncLinkStream(tail), Success(v)));
+                            yield(Stopped(new AsyncLinkStream(tail), v));
                           case None:
                             cur = tail;
                             return true;

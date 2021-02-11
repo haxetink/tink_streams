@@ -60,9 +60,9 @@ class SignalStreamTest {
     a.trigger(Fail(new Error('Failed')));
 
     result.handle(function (x) {
-      asserts.assert(x.match(Stopped(_, Failure(_))));
+      asserts.assert(x.match(Failed(_)));
       asserts.assert(15 == sum);
-    done = true;
+      done = true;
     });
     asserts.assert(done);
     return asserts.done();
