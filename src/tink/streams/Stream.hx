@@ -124,7 +124,7 @@ class SingleItem<Item, Quality> implements StreamObject<Item, Quality> {
     return new Future<IterationResult<Item, Result, Quality>>(
       trigger -> Helper.trySync(
         f(item),
-        s -> trigger(switch s {
+        (s, _) -> trigger(switch s {
           case Some(v):
             Stopped(Stream.empty(), v);
           case None:
@@ -177,9 +177,9 @@ private class StreamPair<Item, Quality> implements StreamObject<Item, Quality> {
     return new Future<IterationResult<Item, Result, Quality>>(trigger -> {
       final ret = new CallbackLinkRef();
 
-      ret.link = Helper.trySync(l.forEach(f), res -> switch res {
+      ret.link = Helper.trySync(l.forEach(f), (res, _) -> switch res {
         case Done:
-          ret.link = Helper.trySync(r.forEach(f), trigger);
+          ret.link = Helper.trySync(r.forEach(f), (v, _) -> trigger(v));
         case Failed(rest, e):
           trigger(Failed(new StreamPair(rest, cast r), e));//TODO: this is GADT bug
         case Stopped(rest, result):
@@ -276,15 +276,15 @@ private class SelectStream<In, Out, Quality> implements StreamObject<Out, Qualit
 
 private class Helper {
   static public function noop(_:Dynamic) {}
-  static public inline function trySync<X>(f:Future<X>, cb:X->Void) {
+  static public inline function trySync<X>(f:Future<X>, cb:(val:X, sync:Bool)->Void) {
     var tmp = f.handle(Helper.noop);
     return
       switch f.status {
         case Ready(result):
-          cb(result.get());
+          cb(result.get(), true);
           null;
         default:
-          swapHandler(f, tmp, cb);
+          swapHandler(f, tmp, cb.bind(_, false));
       }
   }
   static public function swapHandler<X>(f:Future<X>, prev:CallbackLink, cb) {
@@ -300,11 +300,16 @@ class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
   public function new(link)
     this.link = link;
 
-  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
-    return new Future((yield:(res:IterationResult<Item, Result, Quality>)->Void) -> {
+  public function forEach<Result>(f:Consumer<Item, Result>)
+    return new Future<IterationResult<Item, Result, Quality>>(trigger -> {
       final wait = new CallbackLinkRef();
+      var streaming = true;
+      function yield(v) {
+        streaming = false;
+        trigger(v);
+      }
       function loop(cur:AsyncLink<Item, Quality>) {
-        while (true) {
+        while (streaming) {
           switch cur.status {
             case Ready(result):
               switch result.get() {
@@ -315,26 +320,14 @@ class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
                       cast Failed(Stream.empty(), cast error);// GADT bug
                   });
                 case Cons(item, tail):
-                  function process(progress:Future<Option<Result>>) {
-                    switch progress.status {
-                      case Ready(result):
-                        switch result.get() {
-                          case Some(v):
-                            yield(Stopped(new AsyncLinkStream(tail), v));
-                          case None:
-                            cur = tail;
-                            return true;
-                        }
-                      default:
-                        var tmp = progress.handle(Helper.noop);
-                        if (progress.status.match(Ready(_)))
-                          return process(progress);
-                        else
-                          wait.link = Helper.swapHandler(progress, tmp, _ -> if (process(progress)) loop(tail));
-                    }
-                    return false;
-                  }
-                  if (process(f(item))) continue;
+                  wait.link = Helper.trySync(f(item), (val, sync) -> switch val {
+                    case Some(v):
+                      yield(Stopped(new AsyncLinkStream(tail), v));
+                    case None:
+                      if (sync) cur = tail;
+                      else loop(tail);
+                  });
+                  if (wait.link == null) continue;
               }
             default:
               wait.link = cur.handle(Helper.noop);
