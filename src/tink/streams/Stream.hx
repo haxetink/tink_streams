@@ -54,7 +54,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     return new StreamPair(this, b);
 
   @:from static public function ofIterator<T, Quality>(t:Iterator<T>):Stream<T, Quality>
-    return AsyncLinkStream.ofIterator(t);
+    return SyncLinkStream.ofIterator(t);
 
   @:from static public function promise<T>(p:Promise<Stream<T, Error>>):Stream<T, Error>
     return new PromiseStream(p);
@@ -143,9 +143,6 @@ enum IterationResult<Item, Result, Quality> {
 interface StreamObject<Item, Quality> {
   function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>;
 }
-
-typedef AsyncLink<Item, Quality> = Future<AsyncLinkKind<Item, Quality>>;
-typedef AsyncLinkKind<Item, Quality> = LinkKind<Item, Quality, AsyncLink<Item, Quality>>
 
 private enum LinkKind<Item, Quality, Tail> {
   Fin(error:Null<Quality>);
@@ -294,7 +291,10 @@ private class Helper {
   }
 }
 
-class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
+private typedef AsyncLink<Item, Quality> = Future<AsyncLinkKind<Item, Quality>>;
+private typedef AsyncLinkKind<Item, Quality> = LinkKind<Item, Quality, AsyncLink<Item, Quality>>
+
+private class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
   final link:AsyncLink<Item, Quality>;
 
   public function new(link)
@@ -342,49 +342,56 @@ class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
       loop(link);
       return wait;
     });
-
-  static function iteratorLink<Item, Quality>(i:Iterator<Item>):AsyncLink<Item, Quality>
-    return Future.lazy(() -> if (i.hasNext()) Cons(i.next(), iteratorLink(i)) else Fin(null));
-
-  static public function ofIterator<Item, Quality>(i:Iterator<Item>):Stream<Item, Quality>
-    return new AsyncLinkStream(iteratorLink(i));
 }
 
-// typedef SyncLink<Item, Quality> = LinkKind<Item, Quality, Lazy<SyncLink<Item, Quality>>>;
+private typedef SyncLink<Item, Quality> = Lazy<LinkKind<Item, Quality, SyncLink<Item, Quality>>>;
 
-// class SyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
-//   final link:SyncLink<Item, Quality>;
+private class SyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
+  final link:SyncLink<Item, Quality>;
 
-//   public function new(link)
-//     this.link = link;
+  public function new(link)
+    this.link = link;
 
-//   public function forEach<Result>(f:Consumer<Item, Result>)
-//     return new Future<IterationResult<Item, Result, Quality>>(trigger -> {
-//       final wait = new CallbackLinkRef();
-//       var running = true;
+  public function forEach<Result>(f:Consumer<Item, Result>)
+    return new Future<IterationResult<Item, Result, Quality>>(trigger -> {
+      final wait = new CallbackLinkRef();
+      var streaming = true;
 
-//       function yield(v) {
-//         running = false;
-//         trigger(v);
-//       }
+      function yield(v) {
+        streaming = false;
+        trigger(v);
+      }
 
-//       function process(cur:SyncLink<Item, Quality>)
-//         while (running)
-//           switch cur {
-//             case Fin(error):
-//               yield(switch error {
-//                 case null: Done;
-//                 case e: Stopped(Stream.empty(), Failure(e));
-//               });
-//             case Cons(head, tail):
+      function loop(cur:SyncLink<Item, Quality>)
+        while (streaming)
+          switch cur.get() {
+            case Fin(error):
+              yield(switch error {
+                case null: Done;
+                case e: cast Failed(Stream.empty(), cast e);
+              });
+            case Cons(item, tail):
+              wait.link = Helper.trySync(f(item), (val, sync) -> switch val {
+                case Some(v):
+                  yield(Stopped(new SyncLinkStream(tail), v));
+                case None:
+                  if (sync) cur = tail;
+                  else loop(tail);
+              });
+              if (wait.link == null) continue;
+          }
 
-//           }
+      loop(link);
 
-//       process(link);
+      return wait;
+    });
 
-//       return wait;
-//     });
-// }
+  static function iteratorLink<Item, Quality>(i:Iterator<Item>):SyncLink<Item, Quality>
+    return () -> if (i.hasNext()) Cons(i.next(), iteratorLink(i)) else Fin(null);
+
+  static public function ofIterator<Item, Quality>(i:Iterator<Item>):Stream<Item, Quality>
+    return new SyncLinkStream(iteratorLink(i));
+}
 
 class SignalStream<Item, Quality> extends AsyncLinkStream<Item, Quality> {
   public function new(signal:Signal<Yield<Item, Quality>>)
