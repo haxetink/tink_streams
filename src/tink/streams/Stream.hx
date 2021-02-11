@@ -19,6 +19,14 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     return new AsyncLinkStream(rec());
   }
 
+  public function next():Future<Step<Item, Quality>>
+    // BUG: this compiles: return this.forEach(function (i) return Some(i));
+    return this.forEach(function (i) return Some(i)).map(function (r):Step<Item, Quality> return switch r {
+      case Done: End;
+      case Stopped(rest, result): Link(result, rest);
+      case Failed(_, e): Fail(e);
+    });
+
   public function select<R>(selector):Stream<R, Quality>
     return new SelectStream(this, selector);
 
@@ -42,8 +50,8 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
         cast Empty.INST;
       #end
 
-  @:op(a...b) static function concat<I, Q>(a:Stream<I, Q>, b:Stream<I, Q>)
-    return new StreamPair(a, b);
+  @:op(a...b) public function append(b:Stream<Item, Quality>)
+    return new StreamPair(this, b);
 
   @:from static public function ofIterator<T, Quality>(t:Iterator<T>):Stream<T, Quality>
     return AsyncLinkStream.ofIterator(t);
@@ -56,6 +64,15 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
 
   static public function flatten<T>(s:Stream<Stream<T, Error>, Error>):Stream<T, Error>
     return new FlattenStream(s);
+
+  static public function ofSignal<Item, Quality>(s):Stream<Item, Quality>
+    return new SignalStream(s);
+}
+
+enum Step<Item, Quality> {
+  Link(value:Item, next:Stream<Item, Quality>):Step<Item, Quality>;
+  Fail(e:Error):Step<Item, Error>;
+  End:Step<Item, Quality>;
 }
 
 private class FlattenStream<Item> implements StreamObject<Item, Error> {
@@ -133,22 +150,6 @@ typedef AsyncLinkKind<Item, Quality> = LinkKind<Item, Quality, AsyncLink<Item, Q
 enum LinkKind<Item, Quality, Tail> {
   Fin(error:Null<Quality>);
   Cons(head:Item, tail:Tail);
-}
-
-abstract Step<Result>(Null<Result>) from Null<Result> {
-  public inline function new(v:Result)
-    this = v;
-
-  public inline function unwrap():Result
-    return
-      #if debug
-        switch this {
-          case null: throw 'ohno!';
-          case v: v;
-        }
-      #else
-        cast this;
-      #end
 }
 
 typedef Consumer<Item, Result> = (item:Item)->Future<Option<Result>>;

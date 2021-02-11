@@ -16,7 +16,7 @@ class RunTests {
     Runner.run(TestBatch.make([
       new StreamTest(),
       // new BlendTest(),
-      // new NextTest(),
+      new NextTest(),
       new SignalStreamTest(),
     ])).handle(Runner.exit);
   }
