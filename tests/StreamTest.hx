@@ -72,7 +72,6 @@ class StreamTest {
         asserts.assert(sum == 6);
         asserts.done();
       default:
-        trace(Std.string(o));
         asserts.fail('Expected "Failed');
     });
 

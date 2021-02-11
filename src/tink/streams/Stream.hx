@@ -202,6 +202,9 @@ private class SelectStream<In, Out, Quality> implements StreamObject<Out, Qualit
     this.selector = selector;
   }
 
+  function continued(source):Stream<Out, Quality>
+    return new SelectStream(source, selector);
+
   public function forEach<Result>(f:Consumer<Out, Result>):Future<IterationResult<Out, Result, Quality>>
     return
       source.forEach(
@@ -215,8 +218,9 @@ private class SelectStream<In, Out, Quality> implements StreamObject<Out, Qualit
       ).map(res -> switch res {
         case Done: Done;
         case Stopped(rest, Success(result)):
-          Stopped(rest, result);
-        case Failed(rest, e) | Stopped(rest, Failure(e)): cast Failed(rest, e);// GADT bug
+          Stopped(continued(rest), result);
+        case Failed(rest, e) | Stopped(rest, Failure(e)):
+          cast Failed(cast continued(cast rest), e);// GADT bug
       });
 }
 
@@ -346,7 +350,7 @@ class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
       return wait;
     });
 
-  static function iteratorLink<Item, Quality>(i:Iterator<Item>):Future<AsyncLink<Item, Quality>>
+  static function iteratorLink<Item, Quality>(i:Iterator<Item>):AsyncLink<Item, Quality>
     return Future.lazy(() -> if (i.hasNext()) Cons(i.next(), iteratorLink(i)) else Fin(null));
 
   static public function ofIterator<Item, Quality>(i:Iterator<Item>):Stream<Item, Quality>
