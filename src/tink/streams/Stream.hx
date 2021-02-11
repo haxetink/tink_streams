@@ -20,8 +20,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
   }
 
   public function next():Future<Step<Item, Quality>>
-    // BUG: this compiles: return this.forEach(function (i) return Some(i));
-    return this.forEach(function (i) return Some(i)).map(function (r):Step<Item, Quality> return switch r {
+    return this.forEach(i -> Some(i)).map(function (r):Step<Item, Quality> return switch r {
       case Done: End;
       case Stopped(rest, result): Link(result, rest);
       case Failed(_, e): Fail(e);
@@ -83,11 +82,11 @@ private class FlattenStream<Item> implements StreamObject<Item, Error> {
 
   public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Error>>
     return
-      source.forEach(function (child) return child.forEach(f).map(function (r) return switch r {
+      source.forEach(child -> child.forEach(f).map(r -> switch r {
         case Done: None;
         case Stopped(rest, result): Some(new Pair(rest, Success(result)));
         case Failed(rest, e): Some(new Pair(rest, Failure(e)));
-      })).map(function (r) return switch r {
+      })).map(r -> switch r {
         case Done: Done;
         case Stopped(rest, result):
           var rest = new StreamPair(result.a, new FlattenStream(rest));
@@ -147,7 +146,7 @@ interface StreamObject<Item, Quality> {
 typedef AsyncLink<Item, Quality> = Future<AsyncLinkKind<Item, Quality>>;
 typedef AsyncLinkKind<Item, Quality> = LinkKind<Item, Quality, AsyncLink<Item, Quality>>
 
-enum LinkKind<Item, Quality, Tail> {
+private enum LinkKind<Item, Quality, Tail> {
   Fin(error:Null<Quality>);
   Cons(head:Item, tail:Tail);
 }
@@ -312,7 +311,7 @@ class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
                   yield(switch v {
                     case null: Done;
                     case error:
-                      cast Failed(Stream.empty(), cast error);// GADT bug: what's worse, this compiles: Stopped(Stream.empty(), Failure(error)) compiles
+                      cast Failed(Stream.empty(), cast error);// GADT bug
                   });
                 case Cons(item, tail):
                   function process(progress:Future<Option<Result>>) {
