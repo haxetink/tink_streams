@@ -7,12 +7,13 @@ using tink.CoreApi;
 @:using(tink.streams.RealStream)
 abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<Item, Quality> {
 
-  static public function generate<Item, Quality>(generator:()->Surprise<Item, Quality>):Stream<Item, Quality> {
+  static public function generate<Item, Quality>(generator:()->Future<Yield<Item, Quality>>):Stream<Item, Quality> {
     function rec():AsyncLink<Item, Quality>
       return Future.irreversible(yield -> {
         generator().handle(o -> yield(switch o {
-          case Success(data): Cons(data, rec());
-          case Failure(failure): Fin(failure);
+          case Data(data): Cons(data, rec());
+          case Fail(e): Fin(cast e);
+          case End: Fin(null);
         }));
       });
 
@@ -329,7 +330,7 @@ class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
                         if (progress.status.match(Ready(_)))
                           return process(progress);
                         else
-                          wait.link = Helper.swapHandler(progress, tmp, _ -> process(progress));
+                          wait.link = Helper.swapHandler(progress, tmp, _ -> if (process(progress)) loop(tail));
                     }
                     return false;
                   }

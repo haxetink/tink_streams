@@ -1,0 +1,7 @@
+-lib tink_streams
+-lib hxnodejs
+-cp tests
+-main Benchmark
+--dce full
+-D analyzer-optimize
+-js bin/bench.js
