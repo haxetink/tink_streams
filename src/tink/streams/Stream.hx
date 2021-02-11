@@ -3,7 +3,7 @@ package tink.streams;
 import tink.core.Callback;
 using tink.CoreApi;
 
-@:forward @:transitive
+@:transitive
 @:using(tink.streams.RealStream)
 abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<Item, Quality> {
 
@@ -20,6 +20,9 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
     return new AsyncLinkStream(rec());
   }
 
+  static public function single<Item, Quality>(item:Item):Stream<Item, Quality>
+    return new SingleItem(item);
+
   public function next():Future<Step<Item, Quality>>
     return this.forEach(i -> Some(i)).map(function (r):Step<Item, Quality> return switch r {
       case Done: End;
@@ -27,8 +30,20 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
       case Failed(_, e): Fail(e);
     });
 
-  public function select<R>(selector):Stream<R, Quality>
-    return new SelectStream(this, selector);
+  public function select<R>(selector):Stream<R, Quality> {
+    return
+      if (Type.getClass(this) == SelectStream) {
+        SelectStream.chain(cast this, selector);
+        // var s:SelectStream<Item, Quality> = cast this;
+        // new SelectStream(s.source, SelectStream.chain(s.selector, selector));
+      }
+      else new SelectStream(this, selector);
+  }
+
+  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
+    return new Future(trigger -> {
+      this.forEach(f).handle(trigger);
+    });
 
   public function filter(f:Item->Return<Bool, Quality>):Stream<Item, Quality>
     return select(i -> f(i).map(o -> switch o {
@@ -115,7 +130,7 @@ private class PromiseStream<Item> implements StreamObject<Item, Error> {
     });
 }
 
-class SingleItem<Item, Quality> implements StreamObject<Item, Quality> {
+private class SingleItem<Item, Quality> implements StreamObject<Item, Quality> {
   final item:Item;
   public function new(item)
     this.item = item;
@@ -191,8 +206,26 @@ private typedef Selector<In, Out, Quality> = In->Return<Option<Out>, Quality>;
 
 private class SelectStream<In, Out, Quality> implements StreamObject<Out, Quality> {
 
+  static function chainSelectors<In, Between, Out, Quality>(
+    a:Selector<In, Between, Quality>,
+    b:Selector<Between, Out, Quality>
+  ):Selector<In, Out, Quality>
+    return v -> a(v).flatMap(o -> (switch o {
+      case Success(o):
+        switch o {
+          case Some(v): b(v);
+          case None: Success(None);
+        }
+      case Failure(e): Failure(e);
+    }:Return<Option<Out>, Quality>).asFuture());
   final source:Stream<In, Quality>;
   final selector:Selector<In, Out, Quality>;
+
+  static public function chain<In, Between, Out, Quality>(
+    a:SelectStream<In, Between, Quality>,
+    b:Selector<Between, Out, Quality>
+  )
+    return new SelectStream(a.source, chainSelectors(a.selector, b));
 
   public function new(source, selector) {
     this.source = source;
@@ -205,12 +238,17 @@ private class SelectStream<In, Out, Quality> implements StreamObject<Out, Qualit
   public function forEach<Result>(f:Consumer<Out, Result>):Future<IterationResult<Out, Result, Quality>>
     return
       source.forEach(
-        item -> selector(item).flatMap(o -> switch o {
-          case Success(None): None;
-          case Success(Some(v)):
-            f(v).map(o -> o.map(Success));
-          case Failure(e):
-            Some(Failure(e));
+        item -> new Future(trigger -> {
+          return
+            Helper.trySync(selector(item).asFuture(), (val, sync) -> switch val {
+              case Success(None): trigger(None);
+              case Success(Some(v)):
+                Helper.trySync(f(v), (val, sync) -> switch val {
+                  case Some(v): trigger(Some(Success(v)));
+                  case None: trigger(None);
+                });
+              case Failure(e): trigger(Some(Failure(e)));
+            });
         })
       ).map(res -> switch res {
         case Done: Done;
@@ -221,55 +259,41 @@ private class SelectStream<In, Out, Quality> implements StreamObject<Out, Qualit
       });
 }
 
-// class MapStream<In, Out, Quality> implements StreamObject<Out, Quality> {
-//   final source:Stream<In, Quality>;
-//   final transform:In->Return<Out, Quality>;
+class Grouped<Item, Quality> implements StreamObject<Item, Quality> {
+  final source:Stream<Array<Item>, Quality>;
 
-//   public function new(source, transform) {
-//     this.source = source;
-//     this.transform = transform;
-//   }
+  public function new(source)
+    this.source = source;
 
-//   public function forEach<Result>(f:Consumer<Out, Result>):Future<IterationResult<Out, Result, Quality>>
-//     return source.forEach(item -> transform(item).flatMap(out -> switch out {
-//       case Success(data): f(data).map(o -> switch o {
-//         case Some(v): Some(Success(v));
-//         case None: None;
-//       });
-//       case Failure(e): trace(e); Some(Failure(e));
-//     })).map(res -> switch res {
-//         case Done: Done;
-//         case Stopped(rest, Success(result)): Stopped(rest, result);
-//         case Failed(rest, e) | Stopped(rest, Failure(e)): cast Failed(rest, e);
-//     });
-// }
-
-// class Grouped<Item, Quality> implements StreamObject<Item, Quality> {
-//   final source:Stream<Array<Item>, Quality>;
-
-//   public function new(source)
-//     this.source = source;
-
-//   public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
-//     return
-//       source.forEach((group, done) ->
-//         AsyncLinkStream.ofIterator(group.iterator())
-//           .forEach(f).map(res -> switch res {
-//             case Done: null;
-//             case Stopped(rest, result): done(new Pair(rest, result));
-//           })
-//       ).map(function (o):IterationResult<Item, Result, Quality> return switch o {
-//         case Done: Done;
-//         case Stopped(rest, result):
-//           var rest = new Grouped(rest);
-//           switch result {
-//             case Success({ a: left, b: res }):
-//               Stopped(new StreamPair(left, rest), res);
-//             case Failure(failure):
-//               Stopped(rest, Failure(failure));
-//           }
-//       });
-// }
+  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
+    return
+      source.forEach(
+        group -> switch group {
+          case []: None;
+          case [item]:
+            f(item).map(o -> switch o {
+              case Some(v): Some(new Pair(Stream.empty(), Success(v)));
+              case None: None;
+            });
+          default:
+            SyncLinkStream.ofIterator(group.iterator())
+              .forEach(f).map(res -> switch res {
+                case Done: None;
+                case Stopped(rest, result): Some(new Pair(rest, Success(result)));
+                case Failed(rest, e): Some(new Pair(rest, Failure(e)));
+              });
+        }
+      ).map(function (o):IterationResult<Item, Result, Quality> return switch o {
+        case Done: Done;
+        case Failed(rest, e): Failed(new Grouped(rest), e);
+        case Stopped(rest, { a: left, b: res }):
+          var rest = new StreamPair(left, new Grouped(cast rest));
+          switch res {
+            case Success(data): Stopped(cast rest, data);
+            case Failure(e): cast Failed(rest, e);
+          }
+      });
+}
 
 private class Helper {
   static public function noop(_:Dynamic) {}

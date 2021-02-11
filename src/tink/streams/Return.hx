@@ -8,6 +8,9 @@ abstract Return<T, Quality>(Surprise<T, Quality>) from Surprise<T, Quality> {
   inline function new(v)
     this = v;
 
+  public inline function asFuture()
+    return this;
+
   @:from static function ofError<T>(e:Error):Return<T, Error>
     return ofPromise(e);
 

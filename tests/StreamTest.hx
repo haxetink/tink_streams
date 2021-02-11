@@ -192,6 +192,20 @@ class StreamTest {
     return asserts;
   }
 
+  public function depthTest() {
+    var s = Stream.single(1);
+    for (i in 0...10000)
+      s = s.map(f -> f + 1);
+    s.forEach(v -> Some(v)).eager().handle(res -> switch res {
+      case Stopped(rest, result):
+        asserts.assert(result == 10001);
+        asserts.done();
+      default:
+        asserts.fail('Expected `Stopped`');
+    });
+    return asserts;
+  }
+
   public function testNestedWithOuterError() {
     var n = ofOutcomes([
       Success(Stream.ofIterator(0...3)),
