@@ -64,7 +64,7 @@ class Benchmark {
       });
 
     function tinkRead()
-      return new Named('tink', {
+      return new Named<Promise<Int>>('tink read', {
         var len = 0;
         readStream(dummy).forEach(item -> {
           len += item.length;
@@ -72,13 +72,13 @@ class Benchmark {
         }).map(_ -> len);
       });
 
-    function tinkCopy():Named<Promise<Noise>>
-      return new Named('tink', {
-        writeStream(copy, cast readStream(dummy));
+    function tinkCopy()
+      return new Named<Promise<Int>>('tink copy', {
+        writeStream(copy, cast readStream(dummy)).next(_ -> 42);
       });
 
     function nodeRead()
-      return new Named('node', Future.irreversible(yield -> {
+      return new Named<Promise<Int>>('node read', Future.irreversible(yield -> {
         var len = 0;
         Fs.createReadStream(dummy)
           .on('data', (b:Buffer) -> len += b.length)
@@ -87,11 +87,15 @@ class Benchmark {
       }));
 
     function nodeCopy()
-      return new Named<Promise<Noise>>('node', Future.irreversible(yield -> {
+      return new Named<Promise<Int>>('node copy', Future.irreversible(yield -> {
         Fs.createReadStream(dummy)
-          .pipe(Fs.createWriteStream(copy), { end: true }).on('close', () -> yield(Success(Noise)));
+          .pipe(Fs.createWriteStream(copy), { end: true }).on('close', () -> yield(Success(42)));
       }));
     measure([
+      nodeRead(),
+      tinkRead(),
+      nodeRead(),
+      tinkRead(),
       new Named(null, delete()),
       nodeCopy(),
       new Named(null, delete()),
