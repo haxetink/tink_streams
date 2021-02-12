@@ -8,17 +8,13 @@ using tink.CoreApi;
 class RunTests {
 
   static function main() {
-    
-    #if python
-    (cast python.lib.Sys).setrecursionlimit(9999);
-    #end
-    
+    // new StreamTest().laziness(null);
     Runner.run(TestBatch.make([
       new StreamTest(),
-      new BlendTest(),
+    //   // new BlendTest(),
       new NextTest(),
       new SignalStreamTest(),
     ])).handle(Runner.exit);
   }
-  
+
 }

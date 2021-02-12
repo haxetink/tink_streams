@@ -8,16 +8,16 @@ using tink.CoreApi;
 @:asserts
 class BlendTest  {
   public function new() {}
-  
+
   public function testBlend() {
     var done = false;
     var a = Signal.trigger();
     var b = Signal.trigger();
-    var blended = new SignalStream(a.asSignal()).blend(new SignalStream(b.asSignal()));
+    var blended = Stream.ofSignal(a.asSignal()).blend(new SignalStream(b.asSignal()));
     a.trigger(Data(1));
     b.trigger(Data(2));
     a.trigger(Data(3));
-    
+
     var i = 0;
     var sum = 0;
     var result = blended.forEach(function (v) {
@@ -25,14 +25,14 @@ class BlendTest  {
       sum += v;
       return Resume;
     });
-    
+
     a.trigger(Data(4));
     a.trigger(End);
     b.trigger(Data(5));
     b.trigger(End);
     b.trigger(Data(6));
     a.trigger(Data(7));
-    
+
     result.handle(function (x) {
       asserts.assert(Depleted == x);
       asserts.assert(15 == sum);
@@ -41,7 +41,7 @@ class BlendTest  {
     asserts.assert(done);
     return asserts.done();
   }
-  
+
   public function testCompound() {
     var done = false;
     var a = Signal.trigger();
@@ -52,7 +52,7 @@ class BlendTest  {
     b.trigger(Data(2));
     a.trigger(End);
     c.trigger(Data(3));
-    
+
     var i = 0;
     var sum = 0;
     var result = blended.forEach(function (v) {
@@ -60,14 +60,14 @@ class BlendTest  {
       sum += v;
       return Resume;
     });
-    
+
     c.trigger(Data(4));
     c.trigger(End);
     b.trigger(Data(5));
     b.trigger(End);
     b.trigger(Data(6));
     a.trigger(Data(7));
-    
+
     result.handle(function (x) {
       asserts.assert(Depleted == x);
       asserts.assert(15 == sum);
@@ -76,7 +76,7 @@ class BlendTest  {
     asserts.assert(done);
     return asserts.done();
   }
-  
+
   public function testError() {
     var done = false;
     var a = Signal.trigger();
@@ -85,7 +85,7 @@ class BlendTest  {
     a.trigger(Data(1));
     b.trigger(Data(2));
     a.trigger(Data(3));
-    
+
     var i = 0;
     var sum = 0;
     var result = blended.forEach(function (v) {
@@ -93,12 +93,12 @@ class BlendTest  {
       sum += v;
       return Resume;
     });
-    
+
     a.trigger(Data(4));
     a.trigger(Data(5));
     b.trigger(Fail(new Error('Failed')));
     a.trigger(End);
-    
+
     result.handle(function (x) {
       asserts.assert(x.match(Failed(_)));
       asserts.assert(15 == sum);
@@ -107,7 +107,7 @@ class BlendTest  {
     asserts.assert(done);
     return asserts.done();
   }
-  
+
   public function testReuse() {
     var a = Signal.trigger();
     var b = Signal.trigger();
@@ -117,7 +117,7 @@ class BlendTest  {
     b.trigger(End);
     a.trigger(Data(3));
     a.trigger(End);
-    
+
     var count = 0;
     function iterate() {
       var i = 0;
@@ -132,7 +132,7 @@ class BlendTest  {
         count++;
       });
     }
-    
+
     iterate();
     iterate();
     iterate();
