@@ -283,9 +283,6 @@ class StreamTest {
 
     return asserts.done();
   }
-
-  static public var verbose = false;
-
   public function laziness() {
 
     var triggers = [],
@@ -323,7 +320,7 @@ class StreamTest {
     asserts.assert(res.status.match(Ready(_.get() => Stopped(_, 40))));
 
     var log = [];
-    var res = s.forEach(t -> { log.push(t); None; });
+    var res = (s...s).forEach(t -> { log.push(t); None; });
     var active:CallbackLink = null;
 
     active = res.handle(function () {});
@@ -348,7 +345,9 @@ class StreamTest {
     res.eager();
 
     asserts.assert(res.status.match(Ready(_.get() => Done)));
-    asserts.assert(log.join(',') == [for (i in 0...triggers.length - 2) i].join(','));
+    var expected = [for (i in 0...triggers.length - 2) i].join(',');
+    expected = '$expected,$expected';
+    asserts.assert(log.join(',') == expected);
 
     return asserts.done();
   }

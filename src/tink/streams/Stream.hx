@@ -39,6 +39,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
 
   public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
     return this.forEach(f);
+
   public function filter(f:Item->Return<Bool, Quality>):Stream<Item, Quality>
     return select(i -> f(i).map(o -> switch o {
       case Success(matched): Success(if (matched) Some(i) else None);
@@ -60,7 +61,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
       #end
 
   @:op(a...b) public function append(b:Stream<Item, Quality>)
-    return new StreamPair(this, b);
+    return new Compound([this, b]);
 
   @:from static public function ofIterator<T, Quality>(t:Iterator<T>):Stream<T, Quality>
     return SyncLinkStream.ofIterator(t);
@@ -99,7 +100,7 @@ private class FlattenStream<Item, Quality> implements StreamObject<Item, Quality
       })).map(r -> switch r {
         case Done: Done;
         case Stopped(rest, result):
-          var rest = new StreamPair(result.a, new FlattenStream(rest));
+          var rest = result.a.append(new FlattenStream(rest));
           switch result.b {
             case Success(data): Stopped(rest, data);
             case Failure(failure): cast Failed(cast rest, failure);
@@ -143,6 +144,7 @@ private class SingleItem<Item, Quality> implements StreamObject<Item, Quality> {
     );
 }
 
+@:using(Stream.IterationResultTools)
 enum IterationResult<Item, Result, Quality> {
   Done:IterationResult<Item, Result, Quality>;
   Failed(rest:Stream<Item, Error>, e:Error):IterationResult<Item, Result, Error>;
@@ -170,30 +172,44 @@ private class Empty<Item, Quality> implements StreamObject<Item, Quality> {
     return Done;
 }
 
-private class StreamPair<Item, Quality> implements StreamObject<Item, Quality> {
-  final l:Stream<Item, Quality>;
-  final r:Stream<Item, Quality>;
+private class Compound<Item, Quality> implements StreamObject<Item, Quality> {
+  final parts:Array<Stream<Item, Quality>>;
 
-  public function new(l, r) {
-    this.l = l;
-    this.r = r;
+  public function new(parts) {
+    this.parts = parts;
   }
 
-  public function forEach<Result>(f:Consumer<Item, Result>)
+  public function forEach<Result>(f:Consumer<Item, Result>) {
+    var index = 0,
+        cur = Future.sync(Done);
     return new Future<IterationResult<Item, Result, Quality>>(trigger -> {
-      final ret = new CallbackLinkRef();
+      final wait = new CallbackLinkRef();
 
-      ret.link = Helper.trySync(l.forEach(f), (res, _) -> switch res {
-        case Done:
-          ret.link = Helper.trySync(r.forEach(f), (v, _) -> trigger(v));
-        case Failed(rest, e):
-          trigger(Failed(new StreamPair(rest, cast r), e));//TODO: this is GADT bug
-        case Stopped(rest, result):
-          trigger(Stopped(new StreamPair(rest, r), result));
-      });
+      var streaming = true;
+      function yield(v) {
+        streaming = false;
+        trigger(v);
+      }
 
-      return ret;
+      function loop()
+        while (streaming) {
+          wait.link = Helper.trySync(cur, (val, sync) -> switch val {
+            case Done:
+              if (index < parts.length)
+                cur = parts[index++].forEach(f);
+              else
+                yield(Done);
+
+              if (!sync) loop();
+            case v:
+              yield(v.withStream(s -> s.append(new Compound(parts.slice(index)))));
+          });
+          if (wait.link != null) break;
+        }
+      loop();
+      return wait;
     });
+  }
 }
 
 private typedef Selector<In, Out, Quality> = In->Return<Option<Out>, Quality>;
@@ -214,18 +230,21 @@ private class SelectStream<In, Out, Quality> implements StreamObject<Out, Qualit
   public function forEach<Result>(f:Consumer<Out, Result>):Future<IterationResult<Out, Result, Quality>>
     return
       source.forEach(
-        item -> new Future(trigger -> {
-          return
-            Helper.trySync(selector(item).asFuture(), (val, sync) -> switch val {
-              case Success(None): trigger(None);
-              case Success(Some(v)):
-                Helper.trySync(f(v), (val, sync) -> switch val {
-                  case Some(v): trigger(Some(Success(v)));
-                  case None: trigger(None);
-                });
-              case Failure(e): trigger(Some(Failure(e)));
-            });
-        })
+        item -> {
+          var selected = selector(item).asFuture();
+          new Future(trigger -> {
+            return
+              Helper.trySync(selected, (val, sync) -> switch val {
+                case Success(None): trigger(None);
+                case Success(Some(v)):
+                  Helper.trySync(f(v), (val, sync) -> switch val {
+                    case Some(v): trigger(Some(Success(v)));
+                    case None: trigger(None);
+                  });
+                case Failure(e): trigger(Some(Failure(e)));
+              });
+          });
+        }
       ).map(res -> switch res {
         case Done: Done;
         case Stopped(rest, Success(result)):
@@ -289,7 +308,7 @@ private class Grouped<Item, Quality> implements StreamObject<Item, Quality> {
         case Done: Done;
         case Failed(rest, e): Failed(new Grouped(rest), e);
         case Stopped(rest, { a: left, b: res }):
-          var rest = new StreamPair(left, new Grouped(cast rest));
+          var rest = left.append(new Grouped(cast rest));
           switch res {
             case Success(data): Stopped(cast rest, data);
             case Failure(e): cast Failed(rest, e);
@@ -297,7 +316,17 @@ private class Grouped<Item, Quality> implements StreamObject<Item, Quality> {
       });
 }
 
+class IterationResultTools {
+  static public function withStream<Item, Result, Quality>(i:IterationResult<Item, Result, Quality>, f:Stream<Item, Quality>->Stream<Item, Quality>):IterationResult<Item, Result, Quality>
+    return switch i {
+      case Done: Done;
+      case Failed(rest, e): Failed(f(rest), e);
+      case Stopped(rest, result): Stopped(f(rest), result);
+    }
+}
+
 private class Helper {
+
   static public function noop(_:Dynamic) {}
   static public inline function trySync<X>(f:Future<X>, cb:(val:X, sync:Bool)->Void) {
     var tmp = f.handle(Helper.noop);
@@ -380,7 +409,8 @@ private class SyncLinkStream<Item, Quality> implements StreamObject<Item, Qualit
   public function new(link)
     this.link = link;
 
-  public function forEach<Result>(f:Consumer<Item, Result>)
+  public function forEach<Result>(f:Consumer<Item, Result>) {
+    var pos = link;
     return new Future<IterationResult<Item, Result, Quality>>(trigger -> {
       final wait = new CallbackLinkRef();
       var streaming = true;
@@ -390,9 +420,9 @@ private class SyncLinkStream<Item, Quality> implements StreamObject<Item, Qualit
         trigger(v);
       }
 
-      function loop(cur:SyncLink<Item, Quality>)
+      function loop()
         while (streaming)
-          switch cur.get() {
+          switch pos.get() {
             case Fin(error):
               yield(switch error {
                 case null: Done;
@@ -403,16 +433,16 @@ private class SyncLinkStream<Item, Quality> implements StreamObject<Item, Qualit
                 case Some(v):
                   yield(Stopped(new SyncLinkStream(tail), v));
                 case None:
-                  if (sync) cur = tail;
-                  else loop(tail);
+                  pos = tail;
+                  if (!sync) loop();
               });
-              if (wait.link == null) continue;
           }
 
-      loop(link);
+      loop();
 
       return wait;
     });
+  }
 
   static function iteratorLink<Item, Quality>(i:Iterator<Item>):SyncLink<Item, Quality>
     return () -> if (i.hasNext()) Cons(i.next(), iteratorLink(i)) else Fin(null);

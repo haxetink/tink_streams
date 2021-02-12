@@ -58,7 +58,7 @@ class NextTest {
     for(i in 0...values.length) {
       current.next().handle(function(v) switch v {
         case Link(v, rest): asserts.assert(values[i] == v, pos); current = rest;
-        default: asserts.fail('Expected Link(_)', pos);
+        default: asserts.fail('Expected Link(_), got ${v.getName()} @ $i', pos);
       });
     }
     current.next().handle(function(v) asserts.assert(v.match(End), pos));
