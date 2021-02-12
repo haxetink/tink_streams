@@ -6,7 +6,7 @@ stages:
   - deploy
 
 language: node_js
-node_js: 8
+node_js: 14
 
 os:
   - linux
@@ -17,7 +17,7 @@ env:
   - HAXE_VERSION=nightly
 
 install:
-  - npm i -g lix@15.3.13
+  - npm i -g lix@15.9.0
   - lix install haxe $HAXE_VERSION
   - lix download
 
