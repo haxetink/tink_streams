@@ -13,14 +13,14 @@ os:
   # - osx
 
 env:
-  - HAXE_VERSION=3.4.7
+  - HAXE_VERSION=stable
   - HAXE_VERSION=nightly
-  
+
 install:
   - npm i -g lix@15.3.13
   - lix install haxe $HAXE_VERSION
   - lix download
-  
+
 script:
   # - lix run travix interp # runtime stack overflow
   - lix run travix neko
@@ -28,10 +28,9 @@ script:
   - lix run travix node
   - lix run travix js
   # - lix run travix flash
-  - lix run travix java
-  - if [[ "$(haxe -version)" =~ ^4.* ]]; then lix run travix java -D jvm; fi
+  - lix run travix java -D jvm
   - lix run travix cpp
-  # - lix run travix cs # gencs stack overflow, to be investigated
+  - lix run travix cs -D erase-generics
   - lix run travix php
   - lix run travix lua
 

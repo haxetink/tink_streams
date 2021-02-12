@@ -37,7 +37,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
       else
         new SelectStream(this, selector);
 
-  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
+  public function forEach<Result>(f:(item:Item)->Future<Option<Result>>):Future<IterationResult<Item, Result, Quality>>
     return this.forEach(f);
 
   public function filter(f:Item->Return<Bool, Quality>):Stream<Item, Quality>
@@ -91,7 +91,7 @@ private class FlattenStream<Item, Quality> implements StreamObject<Item, Quality
   public function new(source)
     this.source = source;
 
-  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
+  public function forEach<Result>(f:(item:Item)->Future<Option<Result>>):Future<IterationResult<Item, Result, Quality>>
     return
       source.forEach(child -> child.forEach(f).map(r -> switch r {
         case Done: None;
@@ -116,7 +116,7 @@ private class PromiseStream<Item> implements StreamObject<Item, Error> {
   public function new(stream)
     this.stream = stream;
 
-  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Error>>
+  public function forEach<Result>(f:(item:Item)->Future<Option<Result>>):Future<IterationResult<Item, Result, Error>>
     return stream.next(s -> s.forEach(f)).map(o -> switch o {
       case Success(data):
         data;
@@ -130,7 +130,7 @@ private class SingleItem<Item, Quality> implements StreamObject<Item, Quality> {
   public function new(item)
     this.item = item;
 
-  public function forEach<Result>(f:Consumer<Item, Result>)
+  public function forEach<Result>(f:(item:Item)->Future<Option<Result>>)
     return new Future<IterationResult<Item, Result, Quality>>(
       trigger -> Helper.trySync(
         f(item),
@@ -152,7 +152,7 @@ enum IterationResult<Item, Result, Quality> {
 }
 
 interface StreamObject<Item, Quality> {
-  function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>;
+  function forEach<Result>(f:(item:Item)->Future<Option<Result>>):Future<IterationResult<Item, Result, Quality>>;
 }
 
 private enum LinkKind<Item, Quality, Tail> {
@@ -160,15 +160,13 @@ private enum LinkKind<Item, Quality, Tail> {
   Cons(head:Item, tail:Tail);
 }
 
-typedef Consumer<Item, Result> = (item:Item)->Future<Option<Result>>;
-
 private class Empty<Item, Quality> implements StreamObject<Item, Quality> {
 
   static final INST:StreamObject<Dynamic, Dynamic> = new Empty();
 
   function new() {}
 
-  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
+  public function forEach<Result>(f:(item:Item)->Future<Option<Result>>):Future<IterationResult<Item, Result, Quality>>
     return Done;
 }
 
@@ -179,7 +177,7 @@ private class Compound<Item, Quality> implements StreamObject<Item, Quality> {
     this.parts = parts;
   }
 
-  public function forEach<Result>(f:Consumer<Item, Result>) {
+  public function forEach<Result>(f:(item:Item)->Future<Option<Result>>) {
     var index = 0,
         cur = Future.sync(Done);
     return new Future<IterationResult<Item, Result, Quality>>(trigger -> {
@@ -227,7 +225,7 @@ private class SelectStream<In, Out, Quality> implements StreamObject<Out, Qualit
   function continued(source):Stream<Out, Quality>
     return new SelectStream(source, selector);
 
-  public function forEach<Result>(f:Consumer<Out, Result>):Future<IterationResult<Out, Result, Quality>>
+  public function forEach<Result>(f:(item:Out)->Future<Option<Result>>):Future<IterationResult<Out, Result, Quality>>
     return
       source.forEach(
         item -> {
@@ -286,7 +284,7 @@ private class Grouped<Item, Quality> implements StreamObject<Item, Quality> {
   public function new(source)
     this.source = source;
 
-  public function forEach<Result>(f:Consumer<Item, Result>):Future<IterationResult<Item, Result, Quality>>
+  public function forEach<Result>(f:(item:Item)->Future<Option<Result>>):Future<IterationResult<Item, Result, Quality>>
     return
       source.forEach(
         group -> switch group {
@@ -355,7 +353,7 @@ private class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quali
   public function new(link)
     this.link = link;
 
-  public function forEach<Result>(f:Consumer<Item, Result>) {
+  public function forEach<Result>(f:(item:Item)->Future<Option<Result>>) {
     var pos = link;
     return new Future<IterationResult<Item, Result, Quality>>(trigger -> {
       final wait = new CallbackLinkRef();
@@ -409,7 +407,7 @@ private class SyncLinkStream<Item, Quality> implements StreamObject<Item, Qualit
   public function new(link)
     this.link = link;
 
-  public function forEach<Result>(f:Consumer<Item, Result>) {
+  public function forEach<Result>(f:(item:Item)->Future<Option<Result>>) {
     var pos = link;
     return new Future<IterationResult<Item, Result, Quality>>(trigger -> {
       final wait = new CallbackLinkRef();
