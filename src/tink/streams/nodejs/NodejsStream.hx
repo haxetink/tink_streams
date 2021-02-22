@@ -1,12 +1,27 @@
 package tink.streams.nodejs;
 
-import tink.core.Callback;
+import js.node.stream.Writable;
 import js.node.stream.Readable;
+import tink.core.Callback;
 import tink.streams.Stream;
 
 using tink.CoreApi;
 
 class NodejsStream<T> {
+
+  static public function pipe<T>(s:Stream<T, Noise>, name:String, dest:IWritable):Future<IterationResult<T, Noise, Error>> {
+    return s.forEach(item -> Future.irreversible(
+      yield ->
+        dest.write(item, (?e:js.lib.Error) -> yield(switch e {
+          case null: None;
+          case e: Some(e);
+        }))
+    )).map(o -> switch o {
+      case Done: Done;
+      case Stopped(rest, e): Failed(cast rest, tink.core.Error.withData('Failed to write to $name', e));
+    });
+  }
+
   static public function wrap<T>(name:String, native:IReadable) {
 
     function failure(e:Dynamic)
