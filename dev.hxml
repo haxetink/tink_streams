@@ -1,5 +1,5 @@
 tests.hxml
-
+-D no-deprecation-warnings
 -js bin/node/tests.js
 
 -lib hxnodejs

@@ -282,7 +282,7 @@ abstract Mapping<In, Out, Quality>(Regrouper<In, Out, Quality>) to Regrouper<In,
   inline function new(o)
     this = o;
 
-  @:from static function ofNext<In, Out>(n:Next<In, Out>):Mapping<In, Out, Error>
+  @:from static function ofNext<In, Out>(n:In->Promise<Out>):Mapping<In, Out, Error>
     return new Mapping({
       apply: function (i:Array<In>, _) return n(i[0]).next(function(o) return Converted(Stream.single(o))).recover(Errored),
     });
@@ -312,7 +312,7 @@ abstract Filter<T, Quality>(Regrouper<T, T, Quality>) to Regrouper<T, T, Quality
   inline function new(o)
     this = o;
 
-  @:from static function ofNext<T>(n:Next<T, Bool>):Filter<T, Error>
+  @:from static function ofNext<T>(n:T->Promise<Bool>):Filter<T, Error>
     return new Filter({
       apply: function (i:Array<T>, _) return n(i[0]).next(function (matched) return Converted(if (matched) Stream.single(i[0]) else Empty.make())).recover(Errored),
     });
