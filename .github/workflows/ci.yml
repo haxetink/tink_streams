@@ -19,7 +19,7 @@ jobs:
           - neko
           - node
           - js
-          - java
+          # - java
           - java -D jvm
           - cs -D erase-generics
           - cpp
