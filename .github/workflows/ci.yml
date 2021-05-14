@@ -17,14 +17,15 @@ jobs:
           - nightly
         target: 
           - neko
-          - python
           - node
           - js
           - java
           - java -D jvm
+          - cs -D erase-generics
           - cpp
           - php
-          - lua
+          # - python
+          # - lua
 
     steps:
     - name: Check out repo
