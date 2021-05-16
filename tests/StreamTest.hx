@@ -8,6 +8,7 @@ using StringTools;
 using tink.CoreApi;
 
 @:asserts
+@:timeout(200000)
 class StreamTest {
   public function new() {}
   public function testIterator() {
