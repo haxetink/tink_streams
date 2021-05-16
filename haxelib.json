@@ -12,8 +12,8 @@
 	"contributors": [
 		"back2dos"
 	],
-	"releasenote": "Fix error handling in regroup stream",
-	"version": "0.3.3",
+	"releasenote": "Drop haxe3 support",
+	"version": "0.4.0",
 	"url": "http://haxetink.org/tink_streams",
 	"dependencies": {
 		"tink_core": ""
