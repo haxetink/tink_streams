@@ -61,7 +61,7 @@ jobs:
     - name: Install Haxe Libraries
       run: lix download
     
-    - run: lix install 'tink_core#${{ matrix.tink_core }}'
+    - run: lix +tink 'core#${{ matrix.tink_core }}'
       
     - name: Run Test
       run: lix run travix ${{ matrix.target }}
