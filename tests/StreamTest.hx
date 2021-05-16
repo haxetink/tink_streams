@@ -219,10 +219,10 @@ class StreamTest {
   
   #if !java
   public function casts() {
-    var pi1:Promise<IdealStream<Int>> = Promise.NEVER;
-    var pi2:Promise<Stream<Int, Noise>> = Promise.NEVER;
-    var pr1:Promise<RealStream<Int>> = Promise.NEVER;
-    var pr2:Promise<Stream<Int, Error>> = Promise.NEVER;
+    var pi1:Promise<IdealStream<Int>> = Promise.reject(new Error('dummy'));
+    var pi2:Promise<Stream<Int, Noise>> = Promise.reject(new Error('dummy'));
+    var pr1:Promise<RealStream<Int>> = Promise.reject(new Error('dummy'));
+    var pr2:Promise<Stream<Int, Error>> = Promise.reject(new Error('dummy'));
     var r1:RealStream<Int>;
     var r2:Stream<Int, Error>;
     
