@@ -5,19 +5,10 @@ using tink.CoreApi;
 
 @:transitive
 @:using(tink.streams.RealStream)
-abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<Item, Quality> {
+abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<Item, Quality> to StreamObject<Item, Quality> {
 
-  static public function generate<Item, Quality>(generator:()->Future<Yield<Item, Quality>>):Stream<Item, Quality> {
-    function rec():AsyncLink<Item, Quality>
-      return Future.irreversible(yield -> {
-        generator().handle(o -> yield(switch o {
-          case Data(data): Cons(data, rec());
-          case Fail(e): Fin(cast e);
-          case End: Fin(null);
-        }));
-      });
-
-    return new AsyncLinkStream(rec());
+  static public function generate<Item, Quality>(generate:()->Future<Yield<Item, Quality>>):Stream<Item, Quality> {
+    return new Generator(generate);
   }
 
   static public function single<Item, Quality>(item:Item):Stream<Item, Quality>
@@ -66,6 +57,9 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
   @:from static public function ofIterator<T, Quality>(t:Iterator<T>):Stream<T, Quality>
     return SyncLinkStream.ofIterator(t);
 
+  @:from static public function future<T>(p:Future<Stream<T, Noise>>):Stream<T, Noise>
+    return new FutureStream(p);
+
   @:from static public function promise<T>(p:Promise<Stream<T, Error>>):Stream<T, Error>
     return new PromiseStream(p);
 
@@ -110,6 +104,16 @@ private class FlattenStream<Item, Quality> implements StreamObject<Item, Quality
       });
 }
 
+private class FutureStream<Item> implements StreamObject<Item, Noise> {
+  final stream:Future<Stream<Item, Noise>>;
+
+  public function new(stream)
+    this.stream = stream;
+
+  public function forEach<Result>(f:(item:Item)->Future<Option<Result>>):Future<IterationResult<Item, Result, Noise>>
+    return stream.flatMap(s -> s.forEach(f));
+
+}
 private class PromiseStream<Item> implements StreamObject<Item, Error> {
   final stream:Promise<Stream<Item, Error>>;
 
@@ -117,9 +121,9 @@ private class PromiseStream<Item> implements StreamObject<Item, Error> {
     this.stream = stream;
 
   public function forEach<Result>(f:(item:Item)->Future<Option<Result>>):Future<IterationResult<Item, Result, Error>>
-    return stream.next(s -> s.forEach(f)).map(o -> switch o {
-      case Success(data):
-        data;
+    return stream.flatMap(o -> switch o {
+      case Success(s):
+        s.forEach(f);
       case Failure(e):
         Failed(Stream.empty(), e);
     });
@@ -400,6 +404,34 @@ private class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quali
 }
 
 private typedef SyncLink<Item, Quality> = Lazy<LinkKind<Item, Quality, SyncLink<Item, Quality>>>;
+
+class Generator<Item, Quality> extends AsyncLinkStream<Item, Quality> {
+  public function new(generate:()->Future<Yield<Item, Quality>>) {
+    function rec():AsyncLink<Item, Quality>
+      return Future.irreversible(yield ->
+        generate().handle(o -> yield(switch o {
+          case Data(data): Cons(data, rec());
+          case Fail(e): Fin(cast e);
+          case End: Fin(null);
+        }))
+      );
+      // TODO: in theory, this should work too
+      // ... but suspending the step makes StreamTest.laziness fail (stream becomes too lazy)
+      // ... which has something to do with suspension within compoundstream ... go figure
+      // {
+      //   var step = generate();
+      //   new Future(yield ->
+      //     step.handle(o -> yield(switch o {
+      //       case Data(data): Cons(data, rec());
+      //       case Fail(e): Fin(cast e);
+      //       case End: Fin(null);
+      //     }));
+      //   )
+      // }
+
+    super(rec());
+  }
+}
 
 private class SyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
   final link:SyncLink<Item, Quality>;
