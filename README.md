@@ -40,7 +40,7 @@ enum Conclusion<Item, Safety, Quality> {
 
 Don't let this zoo of type parameters irritate you. They all have their place and we actually know two of them already: `Item` denotes the type of items that flow through the stream and `Quality` is what we use to draw the line between ideal and real streams.
 
-There are many more functions defined on streams, but `forEach` is by far the most important one. As we see it accepts a handler for `Item` with a certain `Safety`. This is to allow us to differentiate ideal and real handlers (although we don't explicitly define them). A handler is a function that gets an item and then tells us how it has handled it. It can either `BackOff`, thus stopping iteration *before* that item, or `Finish` this stopping iteration *after* that item, it can `Resume` the iteration or - if it is a `Handler<Item, Error>` - it may `Fail`.
+There are many more functions defined on streams, but `forEach` is by far the most important one. As we see it accepts a handler for `Item` with a certain `Safety`. This is to allow us to differentiate ideal and real handlers (although we don't explicitly define them). A handler is a function that gets an item and then tells us how it has handled it. It can either `BackOff`, thus stopping iteration *before* that item, or `Finish` this stopping iteration *after* that item, it can `Resume` the iteration or - if it is a `Handler<Item, Error>` - it may `Clog`.
 
 Iteration can be concluded for various reasons which are thus expressed in the `Conclusion` enum, which handles four cases:
   
