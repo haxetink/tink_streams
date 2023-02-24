@@ -27,7 +27,7 @@ enum Handled<Safety> {
   BackOff:Handled<Safety>;
   Finish:Handled<Safety>;
   Resume:Handled<Safety>;
-  Fail(e:Error):Handled<Error>;
+  Clog(e:Error):Handled<Error>;
 }
 
 enum Conclusion<Item, Safety, Quality> {
