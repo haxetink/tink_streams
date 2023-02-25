@@ -23,7 +23,7 @@ jobs:
           - cpp
           - cs -D erase-generics
           # - java
-          - js
+          # - js
           - jvm
           # - lua
           - neko

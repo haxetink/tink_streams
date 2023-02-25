@@ -1,6 +1,5 @@
-# @install: lix --silent download "https://github.com/haxetink/tink_pure/archive/4050ed3a56736465484c2cab606593dca766b7bc.tar.gz" into tink_pure/0.3.2/github/4050ed3a56736465484c2cab606593dca766b7bc
--D tink_pure=0.3.2
--cp ${HAXESHIM_LIBCACHE}/tink_pure/0.3.2/github/4050ed3a56736465484c2cab606593dca766b7bc/src
-
--lib tink_slice
+# @install: lix --silent download "haxelib:/tink_pure#0.6.0" into tink_pure/0.6.0/haxelib
 -lib tink_core
+-lib tink_slice
+-cp ${HAXE_LIBCACHE}/tink_pure/0.6.0/haxelib/src
+-D tink_pure=0.6.0
