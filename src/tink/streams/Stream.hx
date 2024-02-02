@@ -21,6 +21,9 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
       case Failed(_, e): Fail(e);
     });
 
+  public function blend(other:Stream<Item, Quality>):Stream<Item, Quality>
+    return new BlendStream(this, other);
+
   public function select<R>(selector):Stream<R, Quality>
     return
       if (Type.getClass(this) == SelectStream)
@@ -51,7 +54,7 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
         cast Empty.INST;
       #end
 
-  @:op(a...b) public function append(b:Stream<Item, Quality>)
+  @:op(a...b) public function append(b:Stream<Item, Quality>):Stream<Item, Quality>
     return new Compound([this, b]);
 
   @:from static public function ofIterator<T, Quality>(t:Iterator<T>):Stream<T, Quality>
@@ -349,7 +352,7 @@ private class Helper {
 }
 
 private typedef AsyncLink<Item, Quality> = Future<AsyncLinkKind<Item, Quality>>;
-private typedef AsyncLinkKind<Item, Quality> = LinkKind<Item, Quality, AsyncLink<Item, Quality>>
+private typedef AsyncLinkKind<Item, Quality> = LinkKind<Item, Quality, AsyncLink<Item, Quality>>;
 
 private class AsyncLinkStream<Item, Quality> implements StreamObject<Item, Quality> {
   final link:AsyncLink<Item, Quality>;
@@ -430,6 +433,52 @@ class Generator<Item, Quality> extends AsyncLinkStream<Item, Quality> {
       // }
 
     super(rec());
+  }
+}
+
+class BlendStream<Item, Quality> extends Generator<Item, Quality> {
+
+  public function new(a:Stream<Item, Quality>, b:Stream<Item, Quality>) {
+    var aDone = false,
+        bDone = false,
+        flipped = false;
+
+    super(
+      () -> new Future<Yield<Item, Quality>>(yield -> {
+        var yielded = false;
+        var ret = [];
+
+        function progress(s:Stream<Item, Quality>, onNext, onDone)
+          ret.push(
+            s.next().handle(v -> {
+              switch v {
+                case Link(value, next):
+                  if (!yielded) {
+                    yielded = true;
+                    onNext(next);
+                    // trace('yielding $value');
+                    yield(Data(value));
+                  }
+                case Fail(e):
+                  yield(Fail(e));
+                case End:
+                  onDone();
+                  if (aDone && bDone) yield(End);
+              }
+            })
+          );
+
+        if (!flipped && !aDone) progress(a, s -> a = s, () -> aDone = true);
+
+        if (!bDone) progress(b, s -> b = s, () -> bDone = true);
+
+        if (flipped && !aDone) progress(a, s -> a = s, () -> aDone = true);
+
+        flipped = !flipped;
+
+        ret;
+      })
+    );
   }
 }
 

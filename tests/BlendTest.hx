@@ -14,16 +14,24 @@ class BlendTest  {
     var a = Signal.trigger();
     var b = Signal.trigger();
     var blended = Stream.ofSignal(a.asSignal()).blend(new SignalStream(b.asSignal()));
+
     a.trigger(Data(1));
     b.trigger(Data(2));
     a.trigger(Data(3));
 
     var i = 0;
     var sum = 0;
+
     var result = blended.forEach(function (v) {
       asserts.assert(++i == v);
       sum += v;
-      return Resume;
+      return None;
+    });
+
+    result.handle(function (x) {
+      asserts.assert(Done == x);
+      asserts.assert(15 == sum);
+      done = true;
     });
 
     a.trigger(Data(4));
@@ -33,11 +41,6 @@ class BlendTest  {
     b.trigger(Data(6));
     a.trigger(Data(7));
 
-    result.handle(function (x) {
-      asserts.assert(Depleted == x);
-      asserts.assert(15 == sum);
-      done = true;
-    });
     asserts.assert(done);
     return asserts.done();
   }
@@ -47,7 +50,7 @@ class BlendTest  {
     var a = Signal.trigger();
     var b = Signal.trigger();
     var c = Signal.trigger();
-    var blended = new SignalStream(a).append(new SignalStream(c)).blend(new SignalStream(b));
+    var blended = Stream.ofSignal(a).append(Stream.ofSignal(c)).blend(Stream.ofSignal(b));
     a.trigger(Data(1));
     b.trigger(Data(2));
     a.trigger(End);
@@ -58,7 +61,13 @@ class BlendTest  {
     var result = blended.forEach(function (v) {
       asserts.assert(++i == v);
       sum += v;
-      return Resume;
+      return None;
+    });
+
+    result.handle(function (x) {
+      asserts.assert(Done == x);
+      asserts.assert(15 == sum);
+      done = true;
     });
 
     c.trigger(Data(4));
@@ -68,11 +77,6 @@ class BlendTest  {
     b.trigger(Data(6));
     a.trigger(Data(7));
 
-    result.handle(function (x) {
-      asserts.assert(Depleted == x);
-      asserts.assert(15 == sum);
-      done = true;
-    });
     asserts.assert(done);
     return asserts.done();
   }
@@ -81,7 +85,7 @@ class BlendTest  {
     var done = false;
     var a = Signal.trigger();
     var b = Signal.trigger();
-    var blended = new SignalStream(a.asSignal()).blend(new SignalStream(b.asSignal()));
+    var blended = Stream.ofSignal(a).blend(Stream.ofSignal(b));
     a.trigger(Data(1));
     b.trigger(Data(2));
     a.trigger(Data(3));
@@ -91,7 +95,13 @@ class BlendTest  {
     var result = blended.forEach(function (v) {
       asserts.assert(++i == v);
       sum += v;
-      return Resume;
+      return None;
+    });
+
+    result.handle(function (x) {
+      asserts.assert(x.match(Failed(_)));
+      asserts.assert(15 == sum);
+      done = true;
     });
 
     a.trigger(Data(4));
@@ -99,11 +109,6 @@ class BlendTest  {
     b.trigger(Fail(new Error('Failed')));
     a.trigger(End);
 
-    result.handle(function (x) {
-      asserts.assert(x.match(Failed(_)));
-      asserts.assert(15 == sum);
-    done = true;
-    });
     asserts.assert(done);
     return asserts.done();
   }
@@ -111,7 +116,9 @@ class BlendTest  {
   public function testReuse() {
     var a = Signal.trigger();
     var b = Signal.trigger();
-    var blended = new SignalStream(a.asSignal()).blend(new SignalStream(b.asSignal()));
+
+    var blended = Stream.ofSignal(a).blend(Stream.ofSignal(b));
+
     a.trigger(Data(1));
     b.trigger(Data(2));
     b.trigger(End);
@@ -125,9 +132,9 @@ class BlendTest  {
       blended.forEach(function (v) {
         asserts.assert(++i == v);
         sum += v;
-        return Resume;
+        return None;
       }).handle(function (x) {
-        asserts.assert(Depleted == x);
+        asserts.assert(Done == x);
         asserts.assert(6 == sum);
         count++;
       });
