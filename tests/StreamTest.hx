@@ -3,6 +3,8 @@ package;
 import tink.streams.IdealStream;
 import tink.streams.RealStream;
 import tink.streams.Stream;
+import tink.streams.Return;
+import haxe.ds.ReadOnlyArray;
 using StringTools;
 
 using tink.CoreApi;
@@ -78,81 +80,107 @@ class StreamTest {
     return asserts;
   }
 
-  // public function testRegroup() {
+  public function testRegroup() {
 
-  //   var s = Stream.ofIterator(0...100);
+    var s = Stream.ofIterator(0...100);
+    
+    
+    final duplicated = s.regroup((i, _) -> Some(Stream.single(i[0])...Stream.single(i[0])));
+    
+    final leftover = s.regroup((i, s) -> {
+      final i = i.copy();
+      var batch = null;
 
-  //   var sum = 0;
-  //   s.regroup(function (i:Array<Int>) return i.length == 5 ? Converted(Stream.single(i[0] + i[4])) : Untouched)
-  //     .idealize(null).forEach(function (v) {
-  //       sum += v;
-  //       return Resume;
-  //     })
-  //     .handle(function (x) switch x {
-  //       case Depleted:
-  //         asserts.assert(1980 == sum);
-  //       case Halted(_):
-  //         asserts.fail('Expected "Depleted"');
-  //     });
+      if(s == Final)
+        batch = i;
+      else if(i.length > 3) { // when there are 4 items in the buffer, consume 3 and leave 1 back into the stream
+        batch = i.splice(0, 3);
+      }
 
-  //   var sum = 0;
-  //   s.regroup(function (i:Array<Int>, s) {
-  //     return if(s == Flowing)
-  //       i.length == 3 ? Converted(Stream.single(i[0] + i[2])) : Untouched
-  //     else
-  //       Converted(Stream.single(i[0])); // TODO: test backoff / clog at last step
-  //   })
-  //     .idealize(null).forEach(function (v) {
-  //       sum += v;
-  //       return Resume;
-  //     })
-  //     .handle(function (x) switch x {
-  //       case Depleted:
-  //         asserts.assert(3333 == sum);
-  //       case Halted(_):
-  //         asserts.fail('Expected "Depleted"');
-  //     });
+      return
+        if(batch != null)
+          Some({converted: Stream.ofIterator(batch.iterator()), leftover: i})
+        else
+          None;
+    });
 
-  //   var sum = 0;
-  //   s.regroup(function (i:Array<Int>) return Converted([i[0], i[0]].iterator()))
-  //     .idealize(null).forEach(function (v) {
-  //       sum += v;
-  //       return Resume;
-  //     })
-  //     .handle(function (x) switch x {
-  //       case Depleted:
-  //         asserts.assert(9900 == sum);
-  //       case Halted(_):
-  //         asserts.fail('Expected "Depleted"');
-  //     });
+    final skipped = s.regroup((i, s) -> 
+      if(s == Flowing)
+        i.length == 3 ? Some(Stream.ofIterator([i[0], i[2]].iterator())) : None
+      else 
+        Some(Stream.single(i[0])) // TODO: test backoff / clog at last step
+    );
 
-  //   var sum = 0;
-  //   s.regroup(function (i:Array<Int>, status:RegroupStatus<Noise>) {
-  //     var batch = null;
+    computeSum(s.regroup((i, _) -> i.length == 5 ? Some(Stream.single(i[0] + i[4])) : None))
+      .handle(sum -> asserts.assert(1980 == sum));
+    
+    computeSum(skipped).handle(sum -> asserts.assert(3333 == sum));
+    computeSum(duplicated).handle(sum -> asserts.assert(9900 == sum));
+    computeSum(leftover).handle(sum -> asserts.assert(4950 == sum));
+      
+    
+    function computeSumUpTo<Quality>(at:Int) {
+      var sum = 0;
+      return v -> {
+        sum += v;
+        Future.sync(v == at ? Some({stoppedAt: at, sum: sum}) : None);
+      }
+    }
 
-  //     if(status == Ended)
-  //       batch = i;
-  //     else if(i.length > 3)
-  //       batch = i.splice(0, 3); // leave one item in the buf
+    duplicated
+      .forEach(computeSumUpTo(10))
+      .handle(x -> switch x {
+        case Stopped(rest, v):
+          asserts.assert(v.stoppedAt == 10);
+          asserts.assert(v.sum == 100);
+          computeSum(rest).handle(restSum -> asserts.assert(restSum == 9800));
+        case _:
+          asserts.fail('Expected "Stopped"');
+      });
+      
+    leftover
+      .forEach(computeSumUpTo(10))
+      .handle(x -> switch x {
+        case Stopped(rest, v):
+          asserts.assert(v.stoppedAt == 10);
+          asserts.assert(v.sum == 55);
+          var restSum = 0;
+          computeSum(rest).handle(restSum -> asserts.assert(restSum == 4895));
+        case _:
+          asserts.fail('Expected "Stopped"');
+      });
 
-  //     return if(batch != null)
-  //       Converted(batch.iterator(), i)
-  //     else
-  //       Untouched;
-  //   })
-  //     .idealize(null).forEach(function (v) {
-  //       sum += v;
-  //       return Resume;
-  //     })
-  //     .handle(function (x) switch x {
-  //       case Depleted:
-  //         asserts.assert(4950 == sum);
-  //       case Halted(_):
-  //         asserts.fail('Expected "Depleted"');
-  //     });
+    return asserts.done();
+  }
+  public function testRegroupError() {
 
-  //   return asserts.done();
-  // }
+    final s1:Stream<Int, Error> = Stream.ofIterator(0...10);
+    final s2:Stream<Int, Error> = Stream.ofIterator(0...10)...Stream.ofError(new Error('Foo'))...Stream.ofIterator(10...20);
+    final duplicated = s2.regroup(i -> Some(Stream.ofIterator([i[0], i[0]].iterator())));
+    final invalid = s1.regroup((i, s) -> {
+      i[0] == 2
+        ? Failure(new Error('Halted'))
+        : Success(Some({converted: ([i[0], i[0]].iterator():Stream<Int, Error>), leftover: null}));
+    });
+    
+    duplicated.forEach(i -> None).handle(r -> switch r {
+      case Failed(rest, e):
+        asserts.assert(e.message == 'Foo');
+        computeSum(rest).handle(sum -> asserts.assert(sum == 290));
+      case _:
+        asserts.fail('Expected "Failed"');
+    });
+    
+    invalid.forEach(i -> None).handle(r -> switch r {
+      case Failed(rest, e):
+        asserts.assert(e.message == 'Halted');
+        computeSum(rest).handle(sum -> asserts.assert(sum == 84));
+      case _:
+        asserts.fail('Expected "Failed"');
+    });
+    
+    return asserts.done();
+  }
 
   public function testNested() {
     var n = Stream.ofIterator([Stream.ofIterator(0...3), Stream.ofIterator(3...6)].iterator());
@@ -355,5 +383,34 @@ class StreamTest {
   // maybe useful to be moved to Stream itself
   inline function ofOutcomes<T>(i:Iterator<Outcome<T, Error>>) {
     return Stream.ofIterator(i).map(function(v:Outcome<T, Error>) return v);
+  }
+  
+  function join<T, Quality>(s:Stream<T, Quality>):Future<Array<T>> {
+    final arr = [];
+    return s.forEach(i -> {
+      arr.push(i);
+      None;
+    }).map(x -> switch x {
+      case Done: arr;
+      case v: throw 'Unreachable $v';
+    });
+  }
+  
+  function computeSum<Quality>(s:Stream<Int, Quality>):Future<Int> {
+    var v = 0;
+    return s.forEach(i -> {
+      v += i;
+      None;
+    }).map(x -> switch x {
+      case Done: v;
+      case _: throw 'Unreachable ($x)';
+    });
+  }
+  
+  function print<Quality>(s:Stream<Int, Quality>) {
+    return s.forEach(i -> {
+      trace(i);
+      None;
+    }).handle(v -> trace(v));
   }
 }

@@ -1,5 +1,6 @@
 package tink.streams;
 
+import tink.streams.Regrouper;
 import tink.core.Callback;
 using tink.CoreApi;
 
@@ -45,6 +46,9 @@ abstract Stream<Item, Quality>(StreamObject<Item, Quality>) from StreamObject<It
       case Success(data): Success(Some(data));// BUG: Success(data) compiles
       case Failure(failure): Failure(failure);
     }));
+    
+  public function regroup<R>(f:Regrouper<Item, R, Quality>):Stream<R, Quality>
+    return new RegroupStream(this, f);
 
   static public inline function empty<Item, Quality>():Stream<Item, Quality>
     return @:privateAccess
@@ -218,7 +222,6 @@ private class Compound<Item, Quality> implements StreamObject<Item, Quality> {
 }
 
 private typedef Selector<In, Out, Quality> = In->Return<Option<Out>, Quality>;
-
 private class SelectStream<In, Out, Quality> implements StreamObject<Out, Quality> {
 
   final source:Stream<In, Quality>;
@@ -285,6 +288,80 @@ private class SelectStream<In, Out, Quality> implements StreamObject<Out, Qualit
     );
 }
 
+
+private class RegroupStream<In, Out, Quality> implements StreamObject<Out, Quality> {
+  final source:Stream<In, Quality>;
+  final regrouper:Regrouper<In, Out, Quality>;
+  final buffer:Null<Array<In>>;
+
+  public function new(source, regrouper, ?buffer) {
+    this.source = source;
+    this.regrouper = regrouper;
+    this.buffer = buffer;
+  }
+  
+  function continued(unconsumed:Stream<Out, Quality>, unprocessed:Stream<In, Quality>, ?buffer:Array<In>):Stream<Out, Quality>
+    return new Compound([unconsumed, new RegroupStream(unprocessed, regrouper, buffer)]);
+
+  public function forEach<Result>(f:(item:Out)->Future<Option<Result>>):Future<IterationResult<Out, Result, Quality>> {
+    var buffer = this.buffer ?? [];
+    
+    return
+      source.forEach(i -> {
+        buffer.push(i);
+        regrouper(buffer, Flowing).asFuture()
+          .flatMap(regrouped -> switch regrouped {
+            case Success(None): // regrouper decided to do nothing
+              Future.sync(None); // continue source iteration
+            case Success(Some({converted: converted, leftover: leftover})): // regrouper converted some items
+              // reset buffer
+              buffer = leftover ?? [];
+              
+              // pass converted stream to consumer
+              // if consumer is done, continue source iteration
+              // else capture the unconsumed items + reuslt, then stop source iteration
+              converted.forEach(f).map(x -> switch x {
+                case Done: None;
+                case Stopped(unconsumed, result): Some(new Pair(unconsumed, Success(result)));
+                case Failed(unconsumed, e): Some(new Pair(cast unconsumed, cast Failure(e)));
+              });
+            case Failure(e): // regrouper failed
+              buffer = [];
+              Future.sync(Some(new Pair(Stream.empty(), Failure(e))));
+        });
+      }).flatMap(function(r):Future<IterationResult<Out, Result, Quality>> return switch r {
+        case Done if(buffer.length > 0):
+          // if everything has finished but there are still items in the buffer,
+          // give user a final chance to process them before ending the stream
+          regrouper(buffer, Final).asFuture()
+            .flatMap(regrouped -> switch regrouped {
+              case Success(None): // regrouper decided to do nothing
+                Future.sync(Done);
+              case Success(Some({converted: converted})): // leftover is ignored at final regroup
+                converted.forEach(f).map(x -> switch x {
+                  case Done: Done;
+                  case Stopped(unconsumed, result): Stopped(unconsumed, result);
+                  case Failed(unconsumed, e): cast Failed(unconsumed, cast e);
+                });
+              case Failure(e):
+                Future.sync(cast Failed(Stream.empty(), cast e));
+          });
+        case Done:
+          Future.sync(Done);
+        case Stopped(unprocessed, {a: unconsumed, b: result}): // the source stream can be stopped for 2 reasons: a. regroup failed, b. consumer stopped
+          final rest = continued(unconsumed, unprocessed, buffer);
+          Future.sync(switch result {
+            case Success(r):
+              Stopped(rest, r);
+            case Failure(e):
+             cast Failed(cast rest, cast e);
+          });
+        case Failed(unprocessed, e):
+          Future.sync(cast Failed(cast continued(Stream.empty(), cast unprocessed, buffer), e));
+      });
+  }
+  
+}
 private class Grouped<Item, Quality> implements StreamObject<Item, Quality> {
   final source:Stream<Array<Item>, Quality>;
 
